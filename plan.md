@@ -11,3 +11,5 @@ Job Hunt Dashboard - specific to software devs for now, could be expanded for an
 - Sorting is folder based maybe?
 - Maybe have an LLM suggest questions to ask, find data about companies - Don't have it do practice interviews, the user can practice by doing
 - Suggest or find events such as career fairs, hackathons, coding competitions, etc.
+- Take notes during events, add new people you contacted
+- 
