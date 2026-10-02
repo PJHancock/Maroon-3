@@ -1,4 +1,4 @@
-const CACHE_NAME = "networking-buddy-shell-v1";
+const CACHE_NAME = "networking-buddy-shell-v2";
 const APP_SHELL = [
   "/",
   "/styles_b.css",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/app_b.js",
   "/home_b.js",
   "/contacts_b.js",
+  "/notifications.js",
   "/game_C.js",
   "/tasks_C.js",
   "/manifest_C.json",
