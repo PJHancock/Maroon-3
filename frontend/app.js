@@ -6,6 +6,7 @@
 //   api(path, { method, body })  / post(path, body)
 //   getState() / refreshState()                    cached GET /api/state
 //   celebrate(xpGained)                            call after any XP-earning action
+//   isDebugMode()                                  true with ?debug=1 in the URL
 //   openSheet(html) / closeSheet() / toast(text) / esc(text)
 //
 // Nothing here touches the DOM at import time, so Node tests can import it.
@@ -135,7 +136,7 @@ export async function refreshState() {
   return state;
 }
 
-// Test hook.
+// Replaces the cached state without asking the server (tests, debug tools).
 export function _setState(s) {
   state = s === null ? null : normalizeState(s);
 }
@@ -276,8 +277,13 @@ export async function celebrate(xpGained) {
     console.error(err);
   }
   const c = computeCelebration(before, after, xpGained);
-  if (typeof document === "undefined") return c;
+  showCelebration(c);
+  return c;
+}
 
+// Plays the animation for a computeCelebration() result. No-op outside a browser.
+export function showCelebration(c) {
+  if (typeof document === "undefined") return;
   const el = document.createElement("div");
   el.className = "celebrate";
   el.innerHTML = `
@@ -287,7 +293,24 @@ export async function celebrate(xpGained) {
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2400);
   }
-  return c;
+}
+
+// ---------- debug ----------
+
+// Debug tools (e.g. the +XP buttons on home) only show with ?debug=1.
+export function isDebugMode() {
+  return new URLSearchParams(globalThis.location?.search ?? "").get("debug") === "1";
+}
+
+// Pure: add XP (and optionally a streak day) to a local copy of state. The
+// server is not told, so the next refresh from /api/state undoes it.
+export function applyDebugXp(current, xp, { streak = false } = {}) {
+  const before = normalizeState(current);
+  const after = {
+    ...before,
+    user: { ...before.user, xp: before.user.xp + xp, streak: before.user.streak + (streak ? 1 : 0) },
+  };
+  return { state: after, celebration: computeCelebration(before, after, xp) };
 }
 
 // ---------- startup ----------
