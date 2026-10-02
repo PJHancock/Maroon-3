@@ -5,8 +5,8 @@
 
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, post, setMockMode } from "../../frontend/app.js";
-import { resetMock, setMockDelay, applyXp } from "../../frontend/mock.js";
+import { api, post, setMockMode } from "../../frontend/app_b.js";
+import { resetMock, setMockDelay, applyXp } from "../../frontend/mock_b.js";
 
 const LIVE = process.env.API_BASE;
 

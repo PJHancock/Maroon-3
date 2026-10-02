@@ -4,9 +4,9 @@ import {
   GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
   renderDraftSheet, loadReminders, _resetCoachCache,
-} from "../../frontend/home.js";
-import { setMockMode, normalizeState } from "../../frontend/app.js";
-import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock.js";
+} from "../../frontend/home_b.js";
+import { setMockMode, normalizeState } from "../../frontend/app_b.js";
+import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
 
 const contacts = SEED.contacts;
 
@@ -133,7 +133,7 @@ test("loadReminders caches until forced", async () => {
   const first = await loadReminders();
   assert.equal(first[0].contact_id, "c1");
   // A task completion adds Marcus; the cache shouldn't change until a refresh.
-  const { post } = await import("../../frontend/app.js");
+  const { post } = await import("../../frontend/app_b.js");
   await post("/api/tasks/t1/complete", { met_name: "Marcus", role: "Data engineer", company: "Qualtrics", hook: "Team moving to dbt" });
   assert.equal((await loadReminders()).length, 1);
   const fresh = await loadReminders({ force: true });

@@ -1,4 +1,4 @@
-// mock.js — an in-browser fake of the backend, used with ?mock=1 and by tests.
+// mock_b.js — an in-browser fake of the backend, used with ?mock=1 and by tests.
 // Shapes follow the API table in the build plan. If Jackson's real responses
 // differ, update them here so the mock keeps matching the real thing.
 

@@ -1,11 +1,11 @@
-// home.js — streak, XP, coach cards, draft sheet, task list, game picker.
+// home_b.js — streak, XP, coach cards, draft sheet, task list, game picker.
 // Owner: Teammate B. Render functions are pure (data -> HTML) so they're unit-tested.
 
 import {
   registerScreen, getState, refreshState, post, esc,
   openSheet, closeSheet, copyText, toast,
   isDebugMode, applyDebugXp, showCelebration, _setState,
-} from "./app.js";
+} from "./app_b.js";
 
 // Mirrors GAME_CONFIGS in backend/games.py (title + XP only).
 export const GAMES = [

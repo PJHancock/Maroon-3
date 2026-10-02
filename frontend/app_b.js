@@ -1,4 +1,4 @@
-// app.js — shared shell: hash router, api() helper, state cache, and UI helpers.
+// app_b.js — shared shell: hash router, api() helper, state cache, and UI helpers.
 // Owner: Teammate B. Other screens import from here; this is the contract:
 //
 //   registerScreen(name, { show(params, data) })  render into <section id="screen-{name}">
@@ -11,7 +11,7 @@
 //
 // Nothing here touches the DOM at import time, so Node tests can import it.
 
-import { mockApi } from "./mock.js";
+import { mockApi } from "./mock_b.js";
 
 // ---------- small utilities ----------
 

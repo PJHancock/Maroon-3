@@ -4,8 +4,8 @@ import {
   parseRoute, esc, daysSince, todayISO, normalizeState, computeCelebration,
   api, post, ApiError, setMockMode, registerScreen, getScreen, celebrate, _setState, getState,
   applyDebugXp, isDebugMode,
-} from "../../frontend/app.js";
-import { resetMock, setMockDelay } from "../../frontend/mock.js";
+} from "../../frontend/app_b.js";
+import { resetMock, setMockDelay } from "../../frontend/mock_b.js";
 
 const realFetch = globalThis.fetch;
 

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   lastContactLabel, sortContacts, filterContacts, renderContact, renderContactList,
   renderContactForm, validateContactForm, renderContactsScreen, isValidEmail, isValidPhone, telHref,
-} from "../../frontend/contacts.js";
-import { SEED } from "../../frontend/mock.js";
+} from "../../frontend/contacts_b.js";
+import { SEED } from "../../frontend/mock_b.js";
 
 const TODAY = "2026-10-02";
 const valid = {
