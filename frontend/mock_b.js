@@ -5,7 +5,7 @@
 export const SEED = {
   user: {
     name: "Alex", school: "BYU", major: "Computer Science",
-    target_roles: ["Data Engineer"], xp: 340, streak: 4, last_active: "2026-10-01",
+    target_roles: ["Data Engineer"], xp: 340, streak: 4, last_active: "2026-10-01", location: "Provo, UT",
     onboarding_goal: "general",
   },
   contacts: [
@@ -52,8 +52,66 @@ export const MOCK_GAMES = {
 let db = structuredClone(SEED);
 let delayMs = 400;
 
+const MOCK_OPPORTUNITIES = [
+  {
+    id: "mock-event", kind: "event", title: "A nearby data engineering meetup",
+    summary: "A current event returned by the research provider.",
+    why_it_fits: "Matches your target role and location.", source_name: "Research provider",
+    source_url: "https://example.com/event", action_url: "https://example.com/event",
+    starts_at: "2026-10-17T09:00:00-06:00", ends_at: "2026-10-17T17:00:00-06:00",
+    location: "Near you", tags: ["data engineering"], on_radar: false,
+  },
+  {
+    id: "mock-person", kind: "person", title: "Data engineers in your area",
+    summary: "A public professional search path.",
+    why_it_fits: "Creates a low-pressure way to find one person to learn from.", source_name: "Research provider",
+    source_url: "https://example.com/people", action_url: "https://example.com/people",
+    starts_at: null, ends_at: null, location: "Provo, UT", tags: ["data engineering"], on_radar: false,
+  },
+];
+
+const MOCK_GUIDANCE = {
+  in_person: {
+    objective: "Have one genuine conversation and leave with one specific detail to remember.",
+    steps: ["Choose a place where your target community gathers.", "Introduce yourself with a clear reason for being there.", "Ask one open question and listen for a detail.", "Name a low-pressure next step before leaving."],
+    questions: ["What kind of work has your attention lately?", "How did you get into this field?", "What would you recommend I try next?"],
+    script: "", external_hint: "Find a current campus, meetup, or professional event nearby.",
+  },
+  event: {
+    objective: "Attend a relevant event and have one conversation with someone whose work interests you.",
+    steps: ["Pick an event that fits your role interests and schedule.", "Prepare one specific question.", "Arrive early enough to introduce yourself.", "Write down one detail before you leave."],
+    questions: ["What brought you to this event?", "What problem is your team working on?", "What skill helps someone contribute quickly?"],
+    script: "", external_hint: "Find a current campus, meetup, or professional event within the next 90 days.",
+  },
+  personal_chat: {
+    objective: "Set up a short conversation that creates a natural next step.",
+    steps: ["Choose someone connected to your current goal.", "Invite them to a specific 15-minute window.", "Bring two questions and follow their answers.", "End by naming what you learned."],
+    questions: ["What does a normal week look like?", "What helped you get started?", "What small project would you recommend?"],
+    script: "Would you be open to a 15-minute chat next week? I’d love to ask about your path into this work.", external_hint: "Use a contact you already know or search a relevant community.",
+  },
+  call: {
+    objective: "Make a real call with a clear reason for reconnecting and a small next step.",
+    steps: ["Choose a contact with a genuine reason to call.", "Ask whether they have a minute.", "Ask one focused question.", "If they miss it, leave the reason and an easy reply path."],
+    questions: ["What has changed since we last talked?", "Could I ask one quick question about your experience?"],
+    script: "Hi, it’s [your name]. I was thinking about what you shared about [specific detail]. I had one quick question and would love to reconnect when you have a minute.", external_hint: "Choose a contact with a phone number to make this one tap away.",
+  },
+  online_outreach: {
+    objective: "Send one specific, low-pressure message to someone whose work you want to understand.",
+    steps: ["Choose someone connected to your target role.", "Read enough to reference one project or idea.", "Ask one focused question.", "Make the next step optional and easy to decline."],
+    questions: ["What part of your work has been most interesting recently?", "What would you suggest a student build?"],
+    script: "Hi! I’m a student exploring [role]. Your work on [specific project] caught my attention. Could I ask one quick question about how you got started?", external_hint: "Use personalized people results or search LinkedIn for a role and location.",
+  },
+  follow_up: {
+    objective: "Reconnect using something the person actually shared instead of a generic check-in.",
+    steps: ["Choose the person and reread your notes.", "Lead with the specific detail you remember.", "Share a small update, question, or resource.", "End with a low-pressure next step."],
+    questions: ["How did the project or deadline turn out?", "Would it be useful if I sent the small project I mentioned?"],
+    script: "Hi! I was thinking about what you shared about [specific detail]. I wanted to ask how it turned out and share a quick update.", external_hint: "Use the person’s saved notes to make the reason for reconnecting specific.",
+  },
+};
+
 export function resetMock() {
   db = structuredClone(SEED);
+  for (const item of MOCK_OPPORTUNITIES) item.on_radar = false;
 }
 
 // Tests set this to 0; the browser keeps a little latency so loading states show.
@@ -107,15 +165,71 @@ function route(method, path, body) {
     return {
       user: db.user, contacts: db.contacts,
       tasks: db.tasks.filter((t) => t.status === "open"),
-      proposed_tasks: db.proposed_tasks || [],
+      proposed_tasks: db.proposed_tasks ?? [],
       game_sessions: db.game_sessions.slice(-5),
+      radar_ids: db.radar_ids ?? [],
     };
+  }
+  if (method === "GET" && (m = p.match(/^\/api\/tasks\/([^/]+)\/prep$/))) {
+    const task = db.tasks.find((item) => item.id === m[1]);
+    if (!task) throw Object.assign(new Error("Task not found"), { status: 404 });
+    return { task, guidance: MOCK_GUIDANCE[task.type] ?? MOCK_GUIDANCE.in_person, contacts: db.contacts, source: "demo" };
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/context$/))) {
+    const task = db.tasks.find((item) => item.id === m[1]);
+    if (!task) throw Object.assign(new Error("Task not found"), { status: 404 });
+    task.prep_context = structuredClone(body);
+    return structuredClone(task.prep_context);
+  }
+  if (method === "DELETE" && (m = p.match(/^\/api\/tasks\/([^/]+)\/context$/))) {
+    const task = db.tasks.find((item) => item.id === m[1]);
+    if (!task) throw Object.assign(new Error("Task not found"), { status: 404 });
+    task.prep_context = null;
+    return structuredClone(task);
   }
   if (method === "POST" && p === "/api/reset") {
     resetMock();
     return { ok: true };
   }
   if (method === "POST" && p === "/api/coach/reminders") return reminders();
+  if (method === "POST" && p === "/api/coach/suggest") {
+    const c = db.contacts.find((x) => x.id === body?.contact_id);
+    const name = c?.name ?? "them";
+    return {
+      suggestions: [
+        `Ask ${name} about ${c?.notes?.[0]?.toLowerCase() ?? "their work"}`,
+        "Ask what they're working on this week",
+        `Ask how their experience connects to ${db.user.target_roles?.[0] ?? "your field"}`,
+      ],
+      contact_id: body?.contact_id,
+      source: "demo",
+    };
+  }
+  if (method === "POST" && p === "/api/coach/propose-tasks") {
+    db.proposed_tasks = [
+      { id: `pt${Date.now()}_1`, title: "Reach out to one new person this week", type: "online_outreach", xp: 35, status: "open", frequency: "weekly", skill: "outreach" },
+      { id: `pt${Date.now()}_2`, title: "Attend a networking event", type: "event", xp: 80, status: "open", skill: "events" },
+      { id: `pt${Date.now()}_3`, title: "Schedule an informational interview", type: "personal_chat", xp: 60, status: "open", skill: "informational interview" },
+    ];
+    return { proposed_tasks: db.proposed_tasks, source: "demo" };
+  }
+  if (method === "POST" && p === "/api/onboarding") {
+    db.user.onboarding_goal = body?.goal || "general";
+    const role = body?.target_role || db.user.target_roles?.[0] || "your target role";
+    const company = body?.target_company || "a company";
+    const templates = body?.goal === "company" ? [
+      { title: `Research ${company}`, type: "online_outreach", xp: 30, skill: "research" },
+      { title: `Find someone at ${company}`, type: "online_outreach", xp: 35, skill: "outreach" },
+    ] : body?.goal === "job" ? [
+      { title: `Research the ${role} role`, type: "online_outreach", xp: 30, skill: "research" },
+      { title: "Schedule an informational interview", type: "personal_chat", xp: 60, skill: "informational interview" },
+    ] : [
+      { title: "Introduce yourself to someone new", type: "in_person", xp: 50, skill: "introductions" },
+      { title: "Contact someone new every week", type: "online_outreach", xp: 35, frequency: "weekly", skill: "outreach" },
+    ];
+    db.tasks.push(...templates.map((task, i) => ({ id: `t${db.tasks.length + i + 1}`, status: "open", ...task })));
+    return { user: db.user, contacts: db.contacts, tasks: db.tasks.filter((t) => t.status === "open"), proposed_tasks: db.proposed_tasks ?? [], game_sessions: db.game_sessions.slice(-5) };
+  }
   if (method === "POST" && p === "/api/coach/draft") {
     const c = db.contacts.find((x) => x.id === body?.contact_id);
     const name = c?.name ?? "there";
@@ -123,6 +237,21 @@ function route(method, path, body) {
       message: `Hi ${name}! I've been thinking about what you said about ${c?.notes?.[0]?.toLowerCase() ?? "your work"}. ` +
         `I'd love to hear how it turned out. Would you be up for a quick coffee sometime next week?`,
     };
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/accept$/))) {
+    const idx = (db.proposed_tasks ?? []).findIndex((t) => t.id === m[1]);
+    if (idx < 0) throw Object.assign(new Error("Proposed task not found"), { status: 404 });
+    const task = db.proposed_tasks.splice(idx, 1)[0];
+    task.frequency = body?.frequency || "once";
+    db.tasks.push(task);
+    return task;
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/reject$/))) {
+    if (!(db.proposed_tasks ?? []).some((task) => task.id === m[1])) {
+      throw Object.assign(new Error("Proposed task not found"), { status: 404 });
+    }
+    db.proposed_tasks = db.proposed_tasks.filter((task) => task.id !== m[1]);
+    return { ok: true };
   }
   if (method === "POST" && p === "/api/contacts") {
     const contact = {
@@ -134,11 +263,47 @@ function route(method, path, body) {
     db.contacts.push(contact);
     return contact;
   }
+  if (method === "PUT" && (m = p.match(/^\/api\/contacts\/([^/]+)$/))) {
+    const contact = db.contacts.find((c) => c.id === m[1]);
+    if (!contact) throw Object.assign(new Error("Contact not found"), { status: 404 });
+    Object.assign(contact, body ?? {});
+    if (Array.isArray(body?.notes)) contact.notes = body.notes;
+    return contact;
+  }
+  if (method === "DELETE" && (m = p.match(/^\/api\/contacts\/([^/]+)$/))) {
+    const index = db.contacts.findIndex((c) => c.id === m[1]);
+    if (index < 0) throw Object.assign(new Error("Contact not found"), { status: 404 });
+    db.contacts.splice(index, 1);
+    return { deleted: m[1] };
+  }
+  if (method === "GET" && p === "/api/opportunities") {
+    return {
+      profile_summary: "Research suggestions for this student's target role and location.",
+      opportunities: structuredClone(MOCK_OPPORTUNITIES),
+      searched_at: today(), window_ends: "2026-12-31", source: "demo",
+    };
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/opportunities\/([^/]+)\/radar$/))) {
+    const item = MOCK_OPPORTUNITIES.find((x) => x.id === m[1]);
+    if (!item) throw Object.assign(new Error("Research opportunity not found"), { status: 404 });
+    item.on_radar = true;
+    db.radar_ids = [...new Set([...(db.radar_ids ?? []), m[1]])];
+    return { opportunity_id: m[1], saved: true, radar_ids: db.radar_ids };
+  }
+  if (method === "DELETE" && (m = p.match(/^\/api\/opportunities\/([^/]+)\/radar$/))) {
+    const item = MOCK_OPPORTUNITIES.find((x) => x.id === m[1]);
+    if (!item) throw Object.assign(new Error("Research opportunity not found"), { status: 404 });
+    item.on_radar = false;
+    db.radar_ids = (db.radar_ids ?? []).filter((id) => id !== m[1]);
+    return { opportunity_id: m[1], saved: false, radar_ids: db.radar_ids };
+  }
   if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/complete$/))) {
     const task = db.tasks.find((t) => t.id === m[1]);
     if (!task) throw Object.assign(new Error("Task not found"), { status: 404 });
     task.status = "done";
-    let contact = db.contacts.find((c) => c.name.toLowerCase() === String(body?.met_name ?? "").toLowerCase());
+    let contact = body?.contact_id
+      ? db.contacts.find((c) => c.id === body.contact_id)
+      : db.contacts.find((c) => c.name.toLowerCase() === String(body?.met_name ?? "").toLowerCase());
     if (contact) {
       if (body?.hook) contact.notes.push(body.hook);
       contact.last_contact = today();
@@ -167,56 +332,6 @@ function route(method, path, body) {
       one_fix: "Reference something specific they said before asking your next question.",
       rewrite_example: "You mentioned the dbt migration. What's been the hardest part of it?",
     };
-  }
-  if (method === "POST" && p === "/api/onboarding") {
-    db.user.onboarding_goal = body?.goal || "general";
-    const role = body?.target_role || db.user.target_roles?.[0] || "your target role";
-    const company = body?.target_company || "a company";
-    const templates = body?.goal === "company" ? [
-      { id: `t${db.tasks.length + 1}`, title: `Research ${company}`, type: "online_outreach", xp: 30, status: "open", skill: "research" },
-      { id: `t${db.tasks.length + 2}`, title: `Find someone at ${company}`, type: "online_outreach", xp: 35, status: "open", skill: "outreach" },
-    ] : body?.goal === "job" ? [
-      { id: `t${db.tasks.length + 1}`, title: `Research the ${role} role`, type: "online_outreach", xp: 30, status: "open", skill: "research" },
-      { id: `t${db.tasks.length + 2}`, title: "Schedule an informational interview", type: "personal_chat", xp: 60, status: "open", skill: "informational interview" },
-    ] : [
-      { id: `t${db.tasks.length + 1}`, title: "Introduce yourself to someone new", type: "in_person", xp: 50, status: "open", skill: "introductions" },
-      { id: `t${db.tasks.length + 2}`, title: "Contact someone new every week", type: "online_outreach", xp: 35, status: "open", frequency: "weekly", skill: "outreach" },
-    ];
-    db.tasks.push(...templates);
-    return { user: db.user, contacts: db.contacts, tasks: db.tasks.filter((t) => t.status === "open"), proposed_tasks: db.proposed_tasks || [], game_sessions: db.game_sessions.slice(-5) };
-  }
-  if (method === "POST" && p === "/api/coach/suggest") {
-    const c = db.contacts.find((x) => x.id === body?.contact_id);
-    const name = c?.name ?? "them";
-    return {
-      suggestions: [
-        `Ask ${name} about ${c?.notes?.[0]?.toLowerCase() ?? "their work"}`,
-        `Ask what they're working on this week`,
-        `Ask how their experience connects to ${db.user.target_roles?.[0] ?? "your field"}`,
-      ],
-      contact_id: body?.contact_id,
-      source: "demo",
-    };
-  }
-  if (method === "POST" && p === "/api/coach/propose-tasks") {
-    db.proposed_tasks = [
-      { id: `pt${Date.now()}_1`, title: "Reach out to one new person this week", type: "online_outreach", xp: 35, status: "open", frequency: "weekly", skill: "outreach" },
-      { id: `pt${Date.now()}_2`, title: "Attend a networking event", type: "event", xp: 80, status: "open", skill: "events" },
-      { id: `pt${Date.now()}_3`, title: "Schedule an informational interview", type: "personal_chat", xp: 60, status: "open", skill: "informational interview" },
-    ];
-    return { proposed_tasks: db.proposed_tasks, source: "demo" };
-  }
-  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/accept$/))) {
-    const idx = (db.proposed_tasks || []).findIndex((t) => t.id === m[1]);
-    if (idx === -1) throw Object.assign(new Error("Proposed task not found"), { status: 404 });
-    const task = db.proposed_tasks.splice(idx, 1)[0];
-    task.frequency = body?.frequency || "once";
-    db.tasks.push(task);
-    return task;
-  }
-  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/reject$/))) {
-    db.proposed_tasks = (db.proposed_tasks || []).filter((t) => t.id !== m[1]);
-    return { ok: true };
   }
   throw Object.assign(new Error(`Mock has no route for ${method} ${p}`), { status: 404 });
 }

@@ -13,11 +13,14 @@ from .errors import DomainError
 from .games import GAME_CONFIGS, GameConfig, get_game
 from .llm import NetworkingAI, validate_reminders, validate_rubric
 from .models import (
-    ActiveSession, Contact, ContactCreate, Database, DraftRequest, DraftResponse,
-    GameSession, HistoryRequest, OnboardingRequest, RemindersResponse, ScoreResponse,
-    StartResponse, StateResponse, SuggestionsResponse, Task, TaskAcceptRequest,
-    TaskComplete, TaskProposalResponse, TaskResponse, TurnResponse, User,
+    ActiveSession, Contact, ContactCreate, ContactUpdate, Database, DraftRequest,
+    DraftResponse, GameSession, HistoryRequest, OnboardingRequest, RadarResponse,
+    RemindersResponse, ResearchResponse, ScoreResponse, StartResponse,
+    StateResponse, SuggestionsResponse, Task, TaskAcceptRequest, TaskComplete,
+    TaskContext, TaskGuidance, TaskPrepResponse, TaskProposalResponse, TaskResponse,
+    TurnResponse, User,
 )
+from .research import normalize_candidates, profile_context, research_fingerprint
 
 
 def award_xp(user: User, amount: int, today: date) -> None:
@@ -35,6 +38,103 @@ def normalize_identity(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+TASK_GUIDANCE = {
+    "in_person": {
+        "objective": "Have one genuine conversation and leave with one specific detail to remember.",
+        "steps": [
+            "Choose a nearby place or event where your target community already gathers.",
+            "Introduce yourself with your school, interest, and one clear reason for being there.",
+            "Ask one open question and listen for a detail you can reference later.",
+            "Before leaving, ask whether a low-pressure follow-up would be welcome.",
+        ],
+        "questions": [
+            "What kind of work has been taking most of your attention lately?",
+            "How did you get into this part of the field?",
+            "What would you recommend I learn or try next?",
+        ],
+        "external_hint": "Look for a current event or community where data and technology professionals gather.",
+    },
+    "event": {
+        "objective": "Attend a relevant event and have one conversation with someone whose work interests you.",
+        "steps": [
+            "Pick an event that fits your role interests and schedule.",
+            "Review the event details and prepare one specific question.",
+            "Arrive early enough to introduce yourself before the room gets busy.",
+            "Write down one detail about the person or team before you leave.",
+        ],
+        "questions": [
+            "What brought you to this event?",
+            "What problem is your team working on right now?",
+            "What is one skill that helps someone contribute quickly on your team?",
+        ],
+        "external_hint": "Find a current campus, meetup, or professional event within the next 90 days.",
+    },
+    "personal_chat": {
+        "objective": "Set up a short conversation that helps you learn about someone’s path and creates a natural next step.",
+        "steps": [
+            "Choose someone whose experience connects to your current goal.",
+            "Invite them to a specific 15-minute time window.",
+            "Bring two questions and let their answers guide the conversation.",
+            "End by naming one thing you learned and a reasonable follow-up.",
+        ],
+        "questions": [
+            "What does a normal week look like in your role?",
+            "What helped you move from learning to doing this work professionally?",
+            "Is there a small project or resource you would recommend?",
+        ],
+        "script": "Would you be open to a 15-minute chat next week? I’d love to ask about your path into this work.",
+    },
+    "call": {
+        "objective": "Make a real call with a clear reason for reconnecting and a small next step.",
+        "steps": [
+            "Choose a contact you have a genuine reason to call.",
+            "Open with why you are calling and ask whether they have a minute.",
+            "Ask one focused question instead of trying to cover everything.",
+            "If they miss the call, leave the reason and an easy way to respond.",
+        ],
+        "questions": [
+            "What has changed since we last talked?",
+            "Could I ask you one quick question about your experience?",
+        ],
+        "script": "Hi, it’s [your name]. I was thinking about what you shared about [specific detail]. I had one quick question and would love to reconnect when you have a minute.",
+    },
+    "online_outreach": {
+        "objective": "Send one specific, low-pressure message to a new person whose work you genuinely want to understand.",
+        "steps": [
+            "Choose someone whose recent work connects to your target role.",
+            "Read enough to reference one specific project or idea.",
+            "Ask one focused question that can be answered briefly.",
+            "Make the next step optional and easy to decline.",
+        ],
+        "questions": [
+            "What part of your work has been most interesting recently?",
+            "What would you suggest a student build to understand this field better?",
+        ],
+        "script": "Hi! I’m a student exploring [role]. Your work on [specific project] caught my attention. Could I ask one quick question about how you got started?",
+        "external_hint": "Use the personalized people results or search LinkedIn for a role, school, or community near you.",
+    },
+    "follow_up": {
+        "objective": "Reconnect using something the person actually shared instead of sending a generic check-in.",
+        "steps": [
+            "Choose the person and reread your saved notes.",
+            "Lead with the specific detail you remember.",
+            "Share a small update, question, or useful resource.",
+            "End with a low-pressure next step.",
+        ],
+        "questions": [
+            "How did the project or deadline you mentioned turn out?",
+            "Would it be useful if I sent you the small project I mentioned?",
+        ],
+        "script": "Hi! I was thinking about what you shared about [specific detail]. I wanted to ask how it turned out and share a quick update from my side.",
+    },
+}
+
+
+def task_guidance(task: Task) -> TaskGuidance:
+    values = TASK_GUIDANCE.get(task.type, TASK_GUIDANCE["in_person"])
+    return TaskGuidance(**values)
+
+
 class BuddyService:
     def __init__(self, repository: Repository, ai: NetworkingAI,
                  today: Callable[[], date], demo_mode: bool):
@@ -42,6 +142,7 @@ class BuddyService:
         self.ai = ai
         self.today = today
         self.demo_mode = demo_mode
+        self._research_cache: dict[str, ResearchResponse] = {}
 
     async def _ai_call(self, method, *args, context: dict):
         # Keep compatibility with simple test/demonstration AI doubles that
@@ -59,6 +160,7 @@ class BuddyService:
             game_sessions=sorted(reversed(database.game_sessions), key=lambda s: s.date, reverse=True)[:20],
             games=[config.public(name) for name, config in GAME_CONFIGS.items()],
             today=self.today(), mode="demo" if self.demo_mode else "live",
+            radar_ids=[entry.opportunity_id for entry in database.radar],
         )
 
     def _game_context(self, database: Database) -> dict:
@@ -72,6 +174,7 @@ class BuddyService:
 
     def reset(self) -> StateResponse:
         self.repository.reset_db()
+        self._research_cache.clear()
         return self.state()
 
     async def start(self, name: str) -> StartResponse:
@@ -184,6 +287,77 @@ class BuddyService:
 
         return self.repository.update(commit)
 
+    def update_contact(self, identifier: str, request: ContactUpdate) -> Contact:
+        if request.last_contact and request.last_contact > self.today():
+            raise DomainError("The contact date cannot be in the future", "future_contact_date", 422)
+
+        def commit(database: Database):
+            contact = next((c for c in database.contacts if c.id == identifier), None)
+            if contact is None:
+                raise DomainError("Contact not found", "contact_not_found", 404)
+            for field, value in request.model_dump(exclude_unset=True).items():
+                setattr(contact, field, value)
+            return contact
+
+        result = self.repository.update(commit)
+        self._research_cache.clear()
+        return result
+
+    def delete_contact(self, identifier: str) -> dict[str, str]:
+        def commit(database: Database):
+            index = next((i for i, c in enumerate(database.contacts) if c.id == identifier), None)
+            if index is None:
+                raise DomainError("Contact not found", "contact_not_found", 404)
+            database.contacts.pop(index)
+            # Preserve completed interaction reflections, but remove dangling
+            # foreign keys so future task retries cannot resurrect the contact.
+            for task in database.tasks:
+                if task.contact_id == identifier:
+                    task.contact_id = None
+            return {"deleted": identifier}
+
+        result = self.repository.update(commit)
+        self._research_cache.clear()
+        return result
+
+    def task_prep(self, identifier: str) -> TaskPrepResponse:
+        database = self.repository.load_db()
+        task = next((item for item in database.tasks if item.id == identifier), None)
+        if task is None:
+            raise DomainError("Task not found", "task_not_found", 404)
+        if task.status != "open":
+            raise DomainError("You already finished this task", "task_completed", 409)
+        return TaskPrepResponse(
+            task=task,
+            guidance=task_guidance(task),
+            contacts=database.contacts,
+            source="demo" if self.demo_mode else "live",
+        )
+
+    def set_task_context(self, identifier: str, context: TaskContext) -> Task:
+        def commit(database: Database):
+            task = next((item for item in database.tasks if item.id == identifier), None)
+            if task is None:
+                raise DomainError("Task not found", "task_not_found", 404)
+            if task.status != "open":
+                raise DomainError("You already finished this task", "task_completed", 409)
+            task.prep_context = context
+            return task
+
+        return self.repository.update(commit)
+
+    def clear_task_context(self, identifier: str) -> Task:
+        def commit(database: Database):
+            task = next((item for item in database.tasks if item.id == identifier), None)
+            if task is None:
+                raise DomainError("Task not found", "task_not_found", 404)
+            if task.status != "open":
+                raise DomainError("You already finished this task", "task_completed", 409)
+            task.prep_context = None
+            return task
+
+        return self.repository.update(commit)
+
     def _reflection_contact(self, database: Database, task: Task, request: TaskComplete) -> Contact:
         identifier = request.contact_id or task.contact_id
         if identifier:
@@ -229,14 +403,12 @@ class BuddyService:
                 task.contact_id = contact.id
                 task.reflection = request.model_dump(exclude={"contact_id"})
                 award_xp(database.user, task.xp, self.today())
-                # Auto-generate follow-up task for this contact.
-                follow_up = Task(
+                database.tasks.append(Task(
                     id="t_" + uuid4().hex, title=f"Follow up with {contact.name}",
                     description=f"Reconnect about: {request.hook[:120]}",
                     type="follow_up", difficulty="easy", xp=40,
                     contact_id=contact.id, frequency="once", skill="follow up",
-                )
-                database.tasks.append(follow_up)
+                ))
             return TaskResponse(contact=contact, task=task, xp=task.xp,
                                 xp_awarded=0 if already else task.xp,
                                 user=database.user, already_completed=already)
@@ -278,71 +450,31 @@ class BuddyService:
             database.user.onboarding_goal = request.goal
             role = request.target_role or (database.user.target_roles[0] if database.user.target_roles else "your target role")
             company = request.target_company or "a company you admire"
-            templates = []
             if request.goal == "job":
                 templates = [
-                    Task(id="t_" + uuid4().hex, title=f"Research the {role} role",
-                         description=f"Find 3 job postings for {role} and note what skills they require.",
-                         type="online_outreach", difficulty="easy", xp=30, skill="research"),
-                    Task(id="t_" + uuid4().hex, title=f"Find someone working as a {role}",
-                         description="Look on LinkedIn or your network for someone in this role to learn from.",
-                         type="online_outreach", difficulty="easy", xp=35, skill="outreach"),
-                    Task(id="t_" + uuid4().hex, title="Schedule an informational interview",
-                         description="Invite someone in your target role to a 15-minute conversation.",
-                         type="personal_chat", difficulty="medium", xp=60, skill="informational interview"),
-                    Task(id="t_" + uuid4().hex, title="Practice your elevator pitch",
-                         description=f"Prepare a 30-second introduction for a {role} conversation.",
-                         type="in_person", difficulty="easy", xp=30, skill="elevator pitch"),
-                    Task(id="t_" + uuid4().hex, title="Start a related personal project",
-                         description=f"Build something small related to {role} to discuss in conversations.",
-                         type="in_person", difficulty="hard", xp=60, skill="portfolio"),
-                    Task(id="t_" + uuid4().hex, title="Contact someone new every week",
-                         description=f"Reach out to one person working in {role} each week.",
-                         type="online_outreach", difficulty="easy", xp=35, frequency="weekly", skill="outreach"),
+                    (f"Research the {role} role", f"Find 3 job postings for {role} and note what skills they require.", "online_outreach", "easy", 30, "research"),
+                    (f"Find someone working as a {role}", "Look on LinkedIn or your network for someone in this role to learn from.", "online_outreach", "easy", 35, "outreach"),
+                    ("Schedule an informational interview", "Invite someone in your target role to a 15-minute conversation.", "personal_chat", "medium", 60, "informational interview"),
+                    ("Practice your elevator pitch", f"Prepare a 30-second introduction for a {role} conversation.", "in_person", "easy", 30, "elevator pitch"),
                 ]
             elif request.goal == "company":
                 templates = [
-                    Task(id="t_" + uuid4().hex, title=f"Research {company}",
-                         description=f"Learn about {company}'s tech stack, culture, and open roles.",
-                         type="online_outreach", difficulty="easy", xp=30, skill="research"),
-                    Task(id="t_" + uuid4().hex, title=f"Find someone who works at {company}",
-                         description=f"Look for an employee at {company} whose work interests you.",
-                         type="online_outreach", difficulty="easy", xp=35, skill="outreach"),
-                    Task(id="t_" + uuid4().hex, title=f"Reach out to a {company} employee",
-                         description="Send a specific, low-pressure question about their experience.",
-                         type="online_outreach", difficulty="medium", xp=50, skill="outreach"),
-                    Task(id="t_" + uuid4().hex, title=f"Learn tools or libraries {company} uses",
-                         description=f"Research what {company} uses and try building something small with it.",
-                         type="online_outreach", difficulty="medium", xp=40, skill="research"),
-                    Task(id="t_" + uuid4().hex, title=f"Start a project related to {company}'s work",
-                         description=f"Build a small project that shows skills relevant to {company}.",
-                         type="in_person", difficulty="hard", xp=60, skill="portfolio"),
-                    Task(id="t_" + uuid4().hex, title=f"Schedule an informational interview at {company}",
-                         description=f"Ask someone at {company} for a 15-minute conversation.",
-                         type="call", difficulty="medium", xp=60, skill="informational interview"),
+                    (f"Research {company}", f"Learn about {company}'s tech stack, culture, and open roles.", "online_outreach", "easy", 30, "research"),
+                    (f"Find someone who works at {company}", f"Look for an employee at {company} whose work interests you.", "online_outreach", "easy", 35, "outreach"),
+                    (f"Reach out to a {company} employee", "Send a specific, low-pressure question about their experience.", "online_outreach", "medium", 50, "outreach"),
+                    (f"Schedule an informational interview at {company}", f"Ask someone at {company} for a 15-minute conversation.", "call", "medium", 60, "informational interview"),
                 ]
-            else:  # general
+            else:
                 templates = [
-                    Task(id="t_" + uuid4().hex, title="Introduce yourself to someone new",
-                         description="Meet one new person at school, work, or an event this week.",
-                         type="in_person", difficulty="easy", xp=50, skill="introductions"),
-                    Task(id="t_" + uuid4().hex, title="Contact someone new every week",
-                         description="Reach out to one person in your field each week.",
-                         type="online_outreach", difficulty="easy", xp=35, frequency="weekly", skill="outreach"),
-                    Task(id="t_" + uuid4().hex, title="Attend a campus or community event",
-                         description="Go to a meetup, info session, or career event and talk to someone.",
-                         type="event", difficulty="hard", xp=80, skill="events"),
-                    Task(id="t_" + uuid4().hex, title="Set up a coffee chat",
-                         description="Invite a mentor, classmate, or professional to a short conversation.",
-                         type="personal_chat", difficulty="medium", xp=60, skill="coffee chat"),
-                    Task(id="t_" + uuid4().hex, title="Practice your elevator pitch",
-                         description="Prepare and practice a 30-second introduction about yourself.",
-                         type="in_person", difficulty="easy", xp=30, skill="elevator pitch"),
-                    Task(id="t_" + uuid4().hex, title="Start a personal project to discuss",
-                         description="Build something small you can bring up in networking conversations.",
-                         type="in_person", difficulty="hard", xp=50, skill="portfolio"),
+                    ("Introduce yourself to someone new", "Meet one new person at school, work, or an event this week.", "in_person", "easy", 50, "introductions"),
+                    ("Contact someone new every week", "Reach out to one person in your field each week.", "online_outreach", "easy", 35, "outreach"),
+                    ("Attend a campus or community event", "Go to a meetup, info session, or career event and talk to someone.", "event", "hard", 80, "events"),
+                    ("Set up a coffee chat", "Invite a mentor, classmate, or professional to a short conversation.", "personal_chat", "medium", 60, "coffee chat"),
                 ]
-            database.tasks.extend(templates)
+            database.tasks.extend(Task(
+                id="t_" + uuid4().hex, title=title, description=description,
+                type=kind, difficulty=difficulty, xp=xp, skill=skill,
+            ) for title, description, kind, difficulty, xp, skill in templates)
 
         self.repository.update(commit)
         return self.state()
@@ -360,17 +492,14 @@ class BuddyService:
 
     async def propose_tasks(self) -> TaskProposalResponse:
         database = self.repository.load_db()
-        context = self._coach_context(database)
-        answer = await self.ai.propose_tasks(context)
-        tasks = []
-        for t in answer.value:
-            tasks.append(Task(
-                id="t_" + uuid4().hex, title=t.get("title", "Networking task"),
-                description=t.get("description", ""), type=t.get("type", "online_outreach"),
-                difficulty=t.get("difficulty", "medium"), xp=max(10, min(100, int(t.get("xp", 40)))),
-                frequency=t.get("frequency", "once"), skill=t.get("skill", ""),
-                contact_id=t.get("contact_id"),
-            ))
+        answer = await self.ai.propose_tasks(self._coach_context(database))
+        tasks = [Task(
+            id="t_" + uuid4().hex, title=item.get("title", "Networking task"),
+            description=item.get("description", ""), type=item.get("type", "online_outreach"),
+            difficulty=item.get("difficulty", "medium"), xp=max(10, min(100, int(item.get("xp", 40)))),
+            frequency=item.get("frequency", "once"), skill=item.get("skill", ""),
+            contact_id=item.get("contact_id"),
+        ) for item in answer.value]
 
         def commit(database: Database):
             database.proposed_tasks = tasks
@@ -380,22 +509,68 @@ class BuddyService:
 
     def accept_task(self, identifier: str, request: TaskAcceptRequest) -> Task:
         def commit(database: Database):
-            task = next((t for t in database.proposed_tasks if t.id == identifier), None)
+            task = next((item for item in database.proposed_tasks if item.id == identifier), None)
             if task is None:
                 raise DomainError("Proposed task not found", "task_not_found", 404)
-            database.proposed_tasks = [t for t in database.proposed_tasks if t.id != identifier]
+            database.proposed_tasks = [item for item in database.proposed_tasks if item.id != identifier]
             task.frequency = request.frequency
             database.tasks.append(task)
             return task
 
         return self.repository.update(commit)
 
-    def reject_task(self, identifier: str) -> dict:
+    def reject_task(self, identifier: str) -> dict[str, bool]:
         def commit(database: Database):
-            task = next((t for t in database.proposed_tasks if t.id == identifier), None)
-            if task is None:
+            if not any(item.id == identifier for item in database.proposed_tasks):
                 raise DomainError("Proposed task not found", "task_not_found", 404)
-            database.proposed_tasks = [t for t in database.proposed_tasks if t.id != identifier]
+            database.proposed_tasks = [item for item in database.proposed_tasks if item.id != identifier]
+            return {"ok": True}
 
-        self.repository.update(commit)
-        return {"ok": True}
+        return self.repository.update(commit)
+
+    async def opportunities(self, refresh: bool = False) -> ResearchResponse:
+        database = self.repository.load_db()
+        context = profile_context(database, self.today())
+        key = research_fingerprint(context)
+        if not refresh and key in self._research_cache:
+            cached = self._research_cache[key]
+            radar_ids = {entry.opportunity_id for entry in database.radar}
+            return cached.model_copy(update={
+                "opportunities": [item.model_copy(update={"on_radar": item.id in radar_ids})
+                                  for item in cached.opportunities],
+            })
+        answer = await self._ai_call(self.ai.research, context=context)
+        opportunities = normalize_candidates(
+            answer.value, self.today(), {entry.opportunity_id for entry in database.radar},
+        )
+        response = ResearchResponse(
+            profile_summary=answer.value.profile_summary,
+            opportunities=opportunities,
+            searched_at=self.today(),
+            window_ends=self.today() + timedelta(days=90),
+            source=answer.source,
+        )
+        self._research_cache[key] = response
+        return response
+
+    async def set_radar(self, identifier: str, saved: bool) -> RadarResponse:
+        if saved:
+            results = await self.opportunities()
+            if not any(item.id == identifier for item in results.opportunities):
+                raise DomainError("Research opportunity not found; refresh recommendations", "opportunity_not_found", 404)
+
+        def commit(database: Database):
+            existing = next((entry for entry in database.radar if entry.opportunity_id == identifier), None)
+            if saved and existing is None:
+                from .models import RadarEntry
+                database.radar.append(RadarEntry(opportunity_id=identifier, saved_at=self.today()))
+            elif not saved and existing is not None:
+                database.radar.remove(existing)
+            return RadarResponse(
+                opportunity_id=identifier,
+                saved=saved,
+                radar_ids=[entry.opportunity_id for entry in database.radar],
+            )
+
+        result = self.repository.update(commit)
+        return result

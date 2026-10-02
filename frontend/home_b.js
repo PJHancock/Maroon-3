@@ -2,8 +2,8 @@
 // Owner: Teammate B. Render functions are pure (data -> HTML) so they're unit-tested.
 
 import {
-  registerScreen, getState, refreshState, post, esc,
-  openSheet, closeSheet, toast, normalizeState,
+  registerScreen, getState, refreshState, post, api, esc,
+  openSheet, closeSheet, copyText, toast,
   isDebugMode, applyDebugXp, showCelebration, _setState,
 } from "./app_b.js";
 
@@ -74,9 +74,24 @@ export function renderCoachCards(reminders, contacts) {
         ${r.reason ? `<p class="coach-reason">${esc(r.reason)}</p>` : ""}
         ${r.suggested_action ? `<p class="coach-action">👉 ${esc(r.suggested_action)}</p>` : ""}
         ${r.tip ? `<p class="coach-tip">💡 ${esc(r.tip)}</p>` : ""}
-        <span class="coach-cta">Get suggestions →</span>
+        <span class="coach-cta">Get conversation ideas →</span>
       </button>`;
   }).join("");
+}
+
+export function renderProposedTasks(proposedTasks) {
+  const tasks = Array.isArray(proposedTasks) ? proposedTasks : [];
+  if (!tasks.length) return "";
+  return `<section class="block">
+    <div class="block-head"><h2>Suggested for you</h2><button class="btn btn-small btn-ghost" data-action="refresh-proposals">↻ New ideas</button></div>
+    <p class="muted">The coach proposed these connection activities. Accept the ones that fit your day.</p>
+    ${tasks.map((task) => {
+      const meta = TASK_PRIORITY[task.type] ?? { label: "Connection", icon: "✅" };
+      return `<div class="card proposal-card" data-proposal-id="${esc(task.id)}">
+        <div class="proposal-header"><span class="task-icon">${meta.icon}</span><span class="task-title"><strong>${esc(task.title)}</strong>${task.description ? `<em>${esc(task.description)}</em>` : ""}${task.skill ? `<span class="skill-badge">${esc(task.skill)}</span>` : ""}</span><span class="xp-pill">+${Number(task.xp) || 0} XP</span></div>
+        <div class="proposal-actions"><select class="frequency-select" data-frequency-for="${esc(task.id)}"><option value="once">One-time</option><option value="daily">Daily</option><option value="weekly"${task.frequency === "weekly" ? " selected" : ""}>Weekly</option></select><button class="btn btn-small" data-action="accept-task" data-task-id="${esc(task.id)}">Accept</button><button class="btn btn-small btn-ghost" data-action="reject-task" data-task-id="${esc(task.id)}">Skip</button></div>
+      </div>`;
+    }).join("")}</section>`;
 }
 
 export function renderCoachLoading() {
@@ -110,45 +125,10 @@ export function renderTasks(tasks) {
     return `
       <a class="card task-card ${realWorld ? "task-card--priority" : ""}" href="#/task/${encodeURIComponent(t.id)}">
         <span class="task-icon">${meta.icon}</span>
-        <span class="task-title"><small>${esc(meta.label)} · ${esc(difficulty)}${t.frequency && t.frequency !== "once" ? ` · ${t.frequency}` : ""}${t.skill ? ` · ${esc(t.skill)}` : ""}</small><strong>${esc(t.title)}</strong>${t.description ? `<em>${esc(t.description)}</em>` : ""}${t.location ? `<em>${esc(t.location)}</em>` : ""}</span>
+        <span class="task-title"><small>${esc(meta.label)} · ${esc(difficulty)}</small><strong>${esc(t.title)}</strong>${t.description ? `<em>${esc(t.description)}</em>` : ""}${t.location ? `<em>${esc(t.location)}</em>` : ""}<em>Prepare →</em></span>
         <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
       </a>`;
   }).join("");
-}
-
-export function renderProposedTasks(proposedTasks) {
-  const tasks = Array.isArray(proposedTasks) ? proposedTasks : [];
-  if (!tasks.length) return "";
-  return `
-    <section class="block">
-      <div class="block-head"><h2>Suggested for you</h2>
-        <button class="btn btn-small btn-ghost" data-action="refresh-proposals">↻ New ideas</button></div>
-      <p class="muted">The coach proposed these tasks. Accept the ones that fit your goals.</p>
-      ${tasks.map((t) => {
-        const meta = TASK_PRIORITY[t.type] ?? { label: "Connection", icon: "✅", priority: 6 };
-        return `
-          <div class="card proposal-card" data-proposal-id="${esc(t.id)}">
-            <div class="proposal-header">
-              <span class="task-icon">${meta.icon}</span>
-              <span class="task-title">
-                <strong>${esc(t.title)}</strong>
-                ${t.description ? `<em>${esc(t.description)}</em>` : ""}
-                ${t.skill ? `<span class="skill-badge">${esc(t.skill)}</span>` : ""}
-              </span>
-              <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
-            </div>
-            <div class="proposal-actions">
-              <select class="frequency-select" data-frequency-for="${esc(t.id)}">
-                <option value="once">One-time</option>
-                <option value="daily">Daily</option>
-                <option value="weekly"${t.frequency === "weekly" ? " selected" : ""}>Weekly</option>
-              </select>
-              <button class="btn btn-small" data-action="accept-task" data-task-id="${esc(t.id)}">Accept</button>
-              <button class="btn btn-small btn-ghost" data-action="reject-task" data-task-id="${esc(t.id)}">Skip</button>
-            </div>
-          </div>`;
-      }).join("")}
-    </section>`;
 }
 
 export function renderGamePicker(games = GAMES) {
@@ -161,48 +141,62 @@ export function renderGamePicker(games = GAMES) {
     </a>`).join("")}</div>`;
 }
 
-export function renderOnboarding(user) {
-  return `
-    <div class="onboarding">
-      <h1>Welcome${user?.name ? `, ${esc(user.name)}` : ""}!</h1>
-      <p class="muted">How would you like to start your networking journey?</p>
-      <div class="onboarding-choices">
-        <button class="card onboarding-card" data-goal="job">
-          <span class="onboarding-icon">🎯</span>
-          <strong>I have a target role</strong>
-          <p class="muted">I know the kind of job I want and I'm ready to network toward it.</p>
-        </button>
-        <button class="card onboarding-card" data-goal="company">
-          <span class="onboarding-icon">🏢</span>
-          <strong>I have a target company</strong>
-          <p class="muted">I want to learn about and connect with people at a specific company.</p>
-        </button>
-        <button class="card onboarding-card" data-goal="general">
-          <span class="onboarding-icon">🌐</span>
-          <strong>I want to explore</strong>
-          <p class="muted">I want to network generally and find new connections in my field.</p>
-        </button>
-      </div>
-    </div>`;
+export function renderSuggestionSheet(reminder, suggestions) {
+  const name = reminder?.contact?.name ?? "your contact";
+  return `<h2>Suggestions for ${esc(name)}</h2>${reminder?.reason ? `<p class="muted">${esc(reminder.reason)}</p>` : ""}<p>You could ask about:</p><ul class="suggestion-list">${(Array.isArray(suggestions) ? suggestions : []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul><div class="sheet-actions"><button class="btn" data-action="reached-out">I reached out ✓</button><button class="btn btn-ghost" data-action="close-sheet">Close</button></div>`;
 }
 
-export function renderOnboardingDetail(goal) {
-  if (goal === "general") return null;
-  const label = goal === "job" ? "What role are you targeting?" : "What company interests you?";
-  const placeholder = goal === "job" ? "e.g. Data Engineer" : "e.g. Qualtrics";
-  const fieldName = goal === "job" ? "target_role" : "target_company";
-  return `
-    <div class="onboarding-detail">
-      <h2>${label}</h2>
-      <form class="onboarding-form" novalidate>
-        <label class="field"><span>${label}</span>
-          <input name="${fieldName}" autocomplete="off" placeholder="${placeholder}"></label>
-        <div class="sheet-actions">
-          <button class="btn" type="submit">Get started</button>
-          <button class="btn btn-ghost" type="button" data-action="back-onboarding">Back</button>
+function opportunityDate(item) {
+  if (!item?.starts_at) return ""
+  const date = new Date(item.starts_at);
+  if (Number.isNaN(date.getTime())) return String(item.starts_at).slice(0, 10);
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+export function eventToICS(item) {
+  if (!item?.starts_at) return "";
+  const toICSDate = (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  };
+  const start = toICSDate(item.starts_at);
+  const end = toICSDate(item.ends_at) || toICSDate(new Date(new Date(item.starts_at).getTime() + 3600000));
+  if (!start || !end) return "";
+  const fold = (value) => String(value ?? "").replace(/[\\;,\n]/g, (c) => `\\${c}`);
+  return [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Networking Buddy//EN", "BEGIN:VEVENT",
+    `UID:${item.id}@networking-buddy`, `DTSTAMP:${toICSDate(new Date())}`,
+    `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${fold(item.title)}`,
+    `DESCRIPTION:${fold(item.summary)}\\n\\n${fold(item.why_it_fits)}`,
+    `LOCATION:${fold(item.location)}`, `URL:${item.action_url}`, "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+export function renderResearchPanel(response) {
+  const opportunities = Array.isArray(response?.opportunities) ? response.opportunities : [];
+  const source = response?.source ?? "fallback";
+  if (!opportunities.length) {
+    const message = source === "demo"
+      ? "Turn on live mode with your Claude key to search current public events and professional communities for this profile."
+      : "No current matches were returned. Refresh after changing your profile or try again later.";
+    return `<div class="research-empty"><p>${esc(message)}</p><button class="btn btn-small btn-ghost" data-action="refresh-research">Refresh research</button></div>`;
+  }
+  return `<div class="research-summary"><p>${esc(response.profile_summary ?? "Research matched to your profile.")}</p><small>Research checked ${esc(response.searched_at ?? "today")} · through ${esc(response.window_ends ?? "the next 90 days")}</small></div>
+    <div class="research-list">${opportunities.map((item) => `
+      <article class="card research-card">
+        <div class="research-card-head"><span class="eyebrow">${item.kind === "event" ? "Upcoming event" : "People to explore"}</span>${item.on_radar ? `<span class="radar-badge">On radar</span>` : ""}</div>
+        <h3>${esc(item.title)}</h3>
+        ${item.starts_at ? `<p class="research-date">📅 ${esc(opportunityDate(item))}</p>` : ""}
+        ${item.location ? `<p class="research-location">📍 ${esc(item.location)}</p>` : ""}
+        <p>${esc(item.summary)}</p><p class="research-fit">${esc(item.why_it_fits)}</p>
+        <small class="research-source">Source: <a href="${esc(item.source_url)}" target="_blank" rel="noopener">${esc(item.source_name)}</a></small>
+        <div class="research-actions">
+          <a class="btn btn-small" href="${esc(item.action_url)}" target="_blank" rel="noopener">${item.kind === "event" ? "Details / RSVP" : "Explore people"}</a>
+          ${item.kind === "event" && item.starts_at ? `<a class="btn btn-small btn-ghost" href="data:text/calendar;charset=utf-8,${encodeURIComponent(eventToICS(item))}" download="${esc(item.id)}.ics">Add to calendar</a>` : ""}
+          <button class="btn btn-small btn-ghost" data-action="${item.on_radar ? "remove-radar" : "save-radar"}" data-opportunity-id="${esc(item.id)}">${item.on_radar ? "Remove radar" : "Save to radar"}</button>
         </div>
-      </form>
-    </div>`;
+      </article>`).join("")}</div>`;
 }
 
 export function renderDebugPanel() {
@@ -218,9 +212,6 @@ export function renderDebugPanel() {
 }
 
 export function renderHome(state, { debug = false } = {}) {
-  if (!state.user?.onboarding_goal) {
-    return renderOnboarding(state.user);
-  }
   return `
     ${debug ? renderDebugPanel() : ""}
     ${renderStats(state.user)}
@@ -232,6 +223,7 @@ export function renderHome(state, { debug = false } = {}) {
     </section>
     <section class="block"><h2>Today's connection plan</h2><p class="muted">Real-world connections come first. Choose the next step that fits your day.</p>${renderTasks(state.tasks)}</section>
     ${renderProposedTasks(state.proposed_tasks)}
+    <section class="block research-block"><div class="block-head"><div><h2>Research for you</h2><p class="muted">Current public opportunities matched to your profile.</p></div><button class="btn btn-small btn-ghost" data-action="refresh-research">↻ Refresh</button></div><div id="research-panel"><div class="skeleton"></div></div></section>
     <section class="block practice-block"><div class="block-head"><h2>Optional practice</h2><span class="xp-pill">Side quest</span></div>${renderGamePicker()}</section>`;
 }
 
@@ -241,18 +233,14 @@ export function normalizeDraft(resp) {
   return resp?.message ?? resp?.draft ?? resp?.text ?? "";
 }
 
-export function renderSuggestionSheet(reminder, suggestions) {
+export function renderDraftSheet(reminder, draft) {
   const name = reminder?.contact?.name ?? "your contact";
-  const items = (Array.isArray(suggestions) ? suggestions : []).map(
-    (s) => `<li>${esc(s)}</li>`
-  ).join("");
   return `
-    <h2>Suggestions for ${esc(name)}</h2>
+    <h2>Message to ${esc(name)}</h2>
     ${reminder?.reason ? `<p class="muted">${esc(reminder.reason)}</p>` : ""}
-    <p>You could ask about:</p>
-    <ul class="suggestion-list">${items}</ul>
+    <textarea class="draft-text" rows="7">${esc(draft)}</textarea>
     <div class="sheet-actions">
-      <button class="btn" data-action="reached-out">I reached out ✓</button>
+      <button class="btn" data-action="copy-draft">Copy</button>
       <button class="btn btn-ghost" data-action="close-sheet">Close</button>
     </div>`;
 }
@@ -315,80 +303,54 @@ async function showCoach(el, force) {
 
 async function openSuggestions(reminder) {
   const body = openSheet(`<h2>Getting suggestions…</h2><div class="card skeleton"></div>`);
-  let suggestions;
   try {
-    const resp = await post("/api/coach/suggest", {
+    const response = await post("/api/coach/suggest", { contact_id: reminder.contact_id, reason: reminder.reason ?? reminder.headline ?? "" });
+    body.innerHTML = renderSuggestionSheet(reminder, response?.suggestions);
+    body.querySelector("[data-action=reached-out]").addEventListener("click", () => { closeSheet(); toast("Nice work! Your outreach is logged."); });
+    body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
+  } catch (err) {
+    body.innerHTML = `<div class="error-box">Couldn't get suggestions (${esc(err.message)}).</div><button class="btn btn-ghost" data-action="close-sheet">Close</button>`;
+    body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
+  }
+}
+
+async function openDraft(reminder) {
+  const body = openSheet(`<h2>Writing a message…</h2><div class="card skeleton"></div>`);
+  let draft;
+  try {
+    draft = normalizeDraft(await post("/api/coach/draft", {
       contact_id: reminder.contact_id,
       reason: reminder.reason ?? reminder.headline ?? "",
-    });
-    suggestions = Array.isArray(resp?.suggestions) ? resp.suggestions : [];
+    }));
   } catch (err) {
-    body.innerHTML = `<div class="error-box">Couldn't get suggestions (${esc(err.message)}).</div>
+    body.innerHTML = `<div class="error-box">Couldn't draft a message (${esc(err.message)}).</div>
       <button class="btn btn-ghost" data-action="close-sheet">Close</button>`;
     body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
     return;
   }
-  body.innerHTML = renderSuggestionSheet(reminder, suggestions);
-  body.querySelector("[data-action=reached-out]").addEventListener("click", () => {
-    closeSheet();
-    toast("Nice work! Your outreach is logged.");
+  body.innerHTML = renderDraftSheet(reminder, draft);
+  body.querySelector("[data-action=copy-draft]").addEventListener("click", async () => {
+    const ok = await copyText(body.querySelector(".draft-text").value);
+    toast(ok ? "Copied! Paste it into your messages." : "Couldn't copy. Select the text instead.");
   });
   body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
 }
 
-function wireHomeActions(el) {
-  el.onclick = async (e) => {
-    if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);
-    const dbg = e.target.closest("[data-debug-xp]");
-    if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
-
-    // Task proposal actions
-    const acceptBtn = e.target.closest("[data-action=accept-task]");
-    if (acceptBtn) {
-      const taskId = acceptBtn.dataset.taskId;
-      const select = el.querySelector(`[data-frequency-for="${taskId}"]`);
-      const frequency = select?.value || "once";
-      try {
-        await post(`/api/tasks/${encodeURIComponent(taskId)}/accept`, { frequency });
-        toast("Task added to your plan!");
-        const state = await refreshState();
-        el.innerHTML = renderHome(state, { debug: isDebugMode() });
-        wireHomeActions(el);
-        showCoach(el, false);
-      } catch (err) {
-        toast(`Couldn't accept: ${err.message}`);
-      }
-    }
-
-    const rejectBtn = e.target.closest("[data-action=reject-task]");
-    if (rejectBtn) {
-      const taskId = rejectBtn.dataset.taskId;
-      try {
-        await post(`/api/tasks/${encodeURIComponent(taskId)}/reject`);
-        const card = el.querySelector(`[data-proposal-id="${taskId}"]`);
-        if (card) card.remove();
-        toast("Skipped.");
-      } catch (err) {
-        toast(`Couldn't skip: ${err.message}`);
-      }
-    }
-
-    if (e.target.closest("[data-action=refresh-proposals]")) {
-      try {
-        const resp = await post("/api/coach/propose-tasks");
-        const state = await refreshState();
-        el.innerHTML = renderHome(state, { debug: isDebugMode() });
-        wireHomeActions(el);
-        showCoach(el, false);
-      } catch (err) {
-        toast(`Couldn't get suggestions: ${err.message}`);
-      }
-    }
-  };
+async function showOpportunities(el, force = false) {
+  const box = el.querySelector("#research-panel");
+  if (!box) return;
+  box.innerHTML = `<div class="skeleton"></div>`;
+  try {
+    box.innerHTML = renderResearchPanel(await api(`/api/opportunities${force ? "?refresh=true" : ""}`));
+  } catch (err) {
+    box.innerHTML = `<div class="error-box">Research couldn't load (${esc(err.message)}). <button class="btn btn-small btn-ghost" data-action="refresh-research">Try again</button></div>`;
+  }
 }
 
 registerScreen("home", {
   async show({ el }) {
+    // /api/state is a local file read, so always fetch fresh XP and tasks;
+    // fall back to the cache if the server hiccups.
     let state;
     try {
       state = await refreshState();
@@ -397,52 +359,49 @@ registerScreen("home", {
       if (!state) throw err;
     }
     el.innerHTML = renderHome(state, { debug: isDebugMode() });
-
-    // Onboarding flow
-    if (!state.user?.onboarding_goal) {
-      el.onclick = async (e) => {
-        const card = e.target.closest("[data-goal]");
-        if (!card) return;
-        const goal = card.dataset.goal;
-        if (goal === "general") {
-          // Skip the detail form for general networking
-          try {
-            state = await post("/api/onboarding", { goal: "general" });
-            _setState(state);
-            el.innerHTML = renderHome(normalizeState(state), { debug: isDebugMode() });
-            wireHomeActions(el);
-            showCoach(el, false);
-          } catch (err) {
-            toast(`Couldn't save: ${err.message}`);
-          }
-          return;
-        }
-        const detail = renderOnboardingDetail(goal);
-        if (detail) {
-          el.innerHTML = detail;
-          const form = el.querySelector(".onboarding-form");
-          form.addEventListener("submit", async (ev) => {
-            ev.preventDefault();
-            const data = Object.fromEntries(new FormData(form));
-            try {
-              state = await post("/api/onboarding", { goal, ...data });
-              _setState(state);
-              el.innerHTML = renderHome(normalizeState(state), { debug: isDebugMode() });
-              wireHomeActions(el);
-              showCoach(el, false);
-            } catch (err) {
-              toast(`Couldn't save: ${err.message}`);
-            }
-          });
-          el.querySelector("[data-action=back-onboarding]")?.addEventListener("click", () => {
-            el.innerHTML = renderHome(state, { debug: isDebugMode() });
-          });
-        }
-      };
-      return;
-    }
-
-    wireHomeActions(el);
+    el.onclick = (e) => {
+      if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);
+      if (e.target.closest("[data-action=refresh-research]")) showOpportunities(el, true);
+      const accept = e.target.closest("[data-action=accept-task]");
+      if (accept) {
+        const taskId = accept.dataset.taskId;
+        const frequency = el.querySelector(`[data-frequency-for="${taskId}"]`)?.value || "once";
+        post(`/api/tasks/${encodeURIComponent(taskId)}/accept`, { frequency }).then(async () => {
+          toast("Task added to your plan!");
+          const fresh = await refreshState();
+          el.innerHTML = renderHome(fresh, { debug: isDebugMode() });
+          showCoach(el, false);
+          showOpportunities(el);
+        }).catch((err) => toast(`Couldn't accept: ${err.message}`));
+      }
+      const reject = e.target.closest("[data-action=reject-task]");
+      if (reject) {
+        post(`/api/tasks/${encodeURIComponent(reject.dataset.taskId)}/reject`).then(() => {
+          el.querySelector(`[data-proposal-id="${reject.dataset.taskId}"]`)?.remove();
+          toast("Skipped.");
+        }).catch((err) => toast(`Couldn't skip: ${err.message}`));
+      }
+      if (e.target.closest("[data-action=refresh-proposals]")) {
+        post("/api/coach/propose-tasks").then(async () => {
+          const fresh = await refreshState();
+          el.innerHTML = renderHome(fresh, { debug: isDebugMode() });
+          showCoach(el, false);
+          showOpportunities(el);
+        }).catch((err) => toast(`Couldn't get suggestions: ${err.message}`));
+      }
+      const radar = e.target.closest("[data-action=save-radar], [data-action=remove-radar]");
+      if (radar) {
+        const saved = radar.dataset.action === "save-radar";
+        radar.disabled = true;
+        api(`/api/opportunities/${encodeURIComponent(radar.dataset.opportunityId)}/radar`, { method: saved ? "POST" : "DELETE" })
+          .then(() => showOpportunities(el))
+          .then(() => toast(saved ? "Saved to your radar" : "Removed from your radar"))
+          .catch((err) => { radar.disabled = false; toast(`Couldn't update radar: ${err.message}`); });
+      }
+      const dbg = e.target.closest("[data-debug-xp]");
+      if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
+    };
     showCoach(el, false);
+    showOpportunities(el);
   },
 });

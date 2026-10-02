@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 from . import prompts
 from .demo import AIResult, DemoAI
 from .games import GameConfig
-from .models import Message, ReminderPayload, ScoreFeedback
+from .models import Message, ReminderPayload, ResearchPayload, ScoreFeedback
 
 logger = logging.getLogger(__name__)
 Payload = TypeVar("Payload", bound=BaseModel)
@@ -25,6 +25,7 @@ class NetworkingAI(Protocol):
     async def draft(self, context: dict) -> AIResult[str]: ...
     async def suggest(self, context: dict) -> AIResult[list[str]]: ...
     async def propose_tasks(self, context: dict) -> AIResult[list[dict]]: ...
+    async def research(self, context: dict) -> AIResult[ResearchPayload]: ...
 
 
 class ProviderFailure(Exception):
@@ -57,6 +58,35 @@ class ClaudeTransport:
             raise ProviderFailure("Empty text response")
         return text
 
+    async def complete_with_web_search(self, system: str, messages: list[dict],
+                                       max_tokens: int, *, location: str = "") -> str:
+        """Use Anthropic's hosted web-search tool; no second search API key is needed."""
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=[{
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 3,
+                    "user_location": {
+                        "type": "approximate",
+                        "city": location.split(",", 1)[0].strip() if location else None,
+                        "region": location.split(",", 1)[1].strip() if "," in location else None,
+                        "country": "US",
+                        "timezone": "America/Denver",
+                    },
+                }],
+            )
+        except self.api_error as exc:
+            raise ProviderFailure(type(exc).__name__) from exc
+        text = "\n".join(block.text for block in response.content if block.type == "text").strip()
+        if not text:
+            raise ProviderFailure("Empty web research response")
+        return text
+
     async def close(self) -> None:
         await self.client.close()
 
@@ -73,7 +103,15 @@ def parse_json(text: str):
     else:
         # Fallback: strip stray fence markers (the build plan's approach).
         text = text.replace("```json", "").replace("```", "").strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Web-search-enabled responses sometimes add a short citation note
+        # after an otherwise valid JSON object.
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        return json.loads(text[start:end + 1])
 
 
 def validate_rubric(feedback: ScoreFeedback, game: GameConfig) -> None:
@@ -168,24 +206,25 @@ class ClaudeAI:
         )
 
     async def suggest(self, context: dict) -> AIResult[list[str]]:
-        def validate(text: str):
-            items = parse_json(text)
-            if not isinstance(items, list) or not all(isinstance(s, str) for s in items):
-                raise ValueError("Must be a JSON array of strings")
-            if len(items) < 2 or len(items) > 3:
-                raise ValueError("Need 2-3 suggestions")
-
+        fallback = (await self.fallback.suggest(context)).value
         try:
             async with asyncio.timeout(self.timeout):
-                text = await self.transport.complete(prompts.SUGGEST_PROMPT,
-                    [{"role": "user", "content": json.dumps(context)}], 600)
-                validate(text)
-                return AIResult(parse_json(text), "live")
+                text = await self.transport.complete(
+                    prompts.SUGGEST_PROMPT,
+                    [{"role": "user", "content": json.dumps(context)}], 600,
+                )
+                items = parse_json(text)
+                if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+                    raise ValueError("Suggestions must be a JSON array of strings")
+                if not 2 <= len(items) <= 3:
+                    raise ValueError("Need 2-3 suggestions")
+                return AIResult(items, "live")
         except (ProviderFailure, TimeoutError, ValueError) as exc:
             logger.warning("Using offline suggest fallback (%s)", type(exc).__name__)
-            return await self.fallback.suggest(context)
+            return AIResult(fallback, "fallback")
 
     async def propose_tasks(self, context: dict) -> AIResult[list[dict]]:
+        fallback = (await self.fallback.propose_tasks(context)).value
         try:
             async with asyncio.timeout(self.timeout):
                 text = await self.transport.complete(
@@ -193,11 +232,33 @@ class ClaudeAI:
                     "Each task should build a specific networking skill. Return ONLY a JSON array of objects, "
                     "each with: title, description, type (in_person|event|personal_chat|call|online_outreach|follow_up), "
                     "difficulty (easy|medium|hard), xp (30-100), frequency (once|daily|weekly), skill (short label).",
-                    [{"role": "user", "content": json.dumps(context)}], 1400)
+                    [{"role": "user", "content": json.dumps(context)}], 1400,
+                )
                 items = parse_json(text)
-                if not isinstance(items, list):
-                    raise ValueError("Must be a JSON array")
+                if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+                    raise ValueError("Task proposals must be a JSON array of objects")
+                if not 3 <= len(items) <= 5:
+                    raise ValueError("Need 3-5 task proposals")
                 return AIResult(items, "live")
         except (ProviderFailure, TimeoutError, ValueError) as exc:
-            logger.warning("Using offline propose_tasks fallback (%s)", type(exc).__name__)
-            return await self.fallback.propose_tasks(context)
+            logger.warning("Using offline task proposal fallback (%s)", type(exc).__name__)
+            return AIResult(fallback, "fallback")
+
+    async def research(self, context: dict) -> AIResult[ResearchPayload]:
+        fallback = (await self.fallback.research(context)).value
+        complete = getattr(self.transport, "complete_with_web_search", None)
+        if complete is None:
+            return AIResult(fallback, "fallback")
+        try:
+            async with asyncio.timeout(self.timeout):
+                text = await complete(
+                    prompts.research_prompt(context),
+                    [{"role": "user", "content": "Search now and return the requested JSON."}],
+                    1800,
+                    location=(context.get("student") or {}).get("location", ""),
+                )
+                payload = ResearchPayload.model_validate(parse_json(text))
+                return AIResult(payload, "live")
+        except (ProviderFailure, TimeoutError, ValueError, ValidationError) as exc:
+            logger.warning("Using offline research fallback (%s)", type(exc).__name__)
+            return AIResult(fallback, "fallback")

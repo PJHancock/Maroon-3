@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#58CC02">
   <link rel="manifest" href="/manifest_C.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192_C.svg">
   <link rel="stylesheet" href="/styles_C.css">
   <title>Networking Buddy</title>
 </head>
@@ -27,5 +28,10 @@
   <script src="/dev/game_C_standalone.js"></script>
   <script src="/dev/tasks_C_standalone.js"></script>
   <script src="/app_C.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+    }
+  </script>
 </body>
 </html>

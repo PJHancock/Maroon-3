@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import {
   GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
-  renderSuggestionSheet, loadReminders, _resetCoachCache,
+  renderDraftSheet, renderSuggestionSheet, renderProposedTasks, loadReminders, _resetCoachCache, eventToICS, renderResearchPanel,
 } from "../../frontend/home_b.js";
 import { setMockMode, normalizeState } from "../../frontend/app_b.js";
 import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
+import { renderTaskPrep, renderReflectionForm, linkedinSearchUrl, eventToICS as taskEventToICS } from "../../frontend/tasks_C.js";
 
 const contacts = SEED.contacts;
 
@@ -85,6 +86,46 @@ test("renderTasks links open tasks to the task screen and hides done ones", () =
   assert.match(renderTasks([]), /All tasks done/);
 });
 
+test("task prep puts guidance before the interaction report", () => {
+  const task = { id: "t1", title: "Attend a data event", type: "event", difficulty: "hard", xp: 100 };
+  const html = renderTaskPrep(task, SEED.contacts, [], { user: SEED.user });
+  assert.match(html, /Before you report it/);
+  assert.match(html, /Make it happen/);
+  assert.match(html, /I did it — report connection/);
+  assert.doesNotMatch(html, /Connection note \*/);
+});
+
+test("task prep exposes contact actions and personalized LinkedIn route", () => {
+  const task = { id: "t4", title: "Call someone", type: "call", difficulty: "medium", xp: 45 };
+  const contact = { ...SEED.contacts[0], phone: "(801) 555-0123", email: "sarah@example.com" };
+  const html = renderTaskPrep(task, [contact], [], { user: SEED.user, selectedContactId: contact.id });
+  assert.match(html, /tel:8015550123/);
+  assert.match(html, /mailto:sarah@example.com/);
+  assert.match(linkedinSearchUrl(SEED.user), /linkedin\.com\/search\/results\/people/);
+});
+
+test("task prep attaches opportunity context and report displays it", () => {
+  const task = { id: "t5", title: "Attend an event", type: "event", xp: 100, prep_context: {
+    opportunity_id: "r1", kind: "event", title: "Data meetup", summary: "Meet people", why_it_fits: "Relevant",
+    source_name: "Meetup", source_url: "https://example.com/source", action_url: "https://example.com/event",
+    starts_at: "2026-10-17T09:00:00-06:00", location: "Provo, UT",
+  } };
+  const html = renderTaskPrep(task, SEED.contacts, [task.prep_context], { researchLoaded: true, user: SEED.user });
+  assert.match(html, /Attached context/);
+  assert.match(renderReflectionForm(task, SEED.contacts), /Prepared with/);
+  assert.match(taskEventToICS(task.prep_context), /BEGIN:VCALENDAR/);
+});
+
+test("selected person is carried into the interaction report fields", () => {
+  const task = { id: "t4", title: "Call someone", type: "call", xp: 45 };
+  const contact = { id: "c9", name: "Taylor", role: "Data engineer", company: "Example Co" };
+  const html = renderReflectionForm(task, [contact], contact.id);
+  assert.match(html, /name="met_name"[^>]*value="Taylor"/);
+  assert.match(html, /name="role"[^>]*value="Data engineer"/);
+  assert.match(html, /name="company"[^>]*value="Example Co"/);
+  assert.match(html, /<option value="c9" selected>Taylor/);
+});
+
 test("renderGamePicker links all four games to the game screen", () => {
   const html = renderGamePicker();
   for (const g of GAMES) assert.match(html, new RegExp(`href="#/game/${g.id}"`));
@@ -122,11 +163,48 @@ test("normalizeDraft accepts several response shapes", () => {
   assert.equal(normalizeDraft(null), "");
 });
 
-test("renderSuggestionSheet escapes the suggestions inside the list", () => {
+test("renderDraftSheet escapes the draft inside the textarea", () => {
+  const html = renderDraftSheet({ contact: { name: "Sarah" }, reason: "R" }, "</textarea><b>x");
+  assert.match(html, /Message to Sarah/);
+  assert.match(html, /&lt;\/textarea&gt;/);
+  assert.match(html, /data-action="copy-draft"/);
+});
+
+test("renderSuggestionSheet escapes LLM suggestions", () => {
   const html = renderSuggestionSheet({ contact: { name: "Sarah" }, reason: "R" }, ["<script>bad</script>"]);
   assert.match(html, /Suggestions for Sarah/);
   assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;/);
   assert.match(html, /data-action="reached-out"/);
+});
+
+test("renderProposedTasks includes XP, frequency, and actions", () => {
+  const html = renderProposedTasks([{ id: "p1", title: "Attend a meetup", type: "event", xp: 80, skill: "events", frequency: "weekly" }]);
+  assert.match(html, /Attend a meetup/);
+  assert.match(html, /\+80 XP/);
+  assert.match(html, /value="weekly" selected/);
+  assert.match(html, /data-action="accept-task"/);
+  assert.match(html, /data-action="reject-task"/);
+});
+
+test("research events can be downloaded as calendar files", () => {
+  const ics = eventToICS({
+    id: "r1", title: "Data meetup", summary: "Meet data engineers", why_it_fits: "Matches your goal",
+    action_url: "https://example.com/event", starts_at: "2026-10-17T09:00:00-06:00",
+    ends_at: "2026-10-17T10:00:00-06:00", location: "Provo, UT",
+  });
+  assert.match(ics, /BEGIN:VCALENDAR/);
+  assert.match(ics, /SUMMARY:Data meetup/);
+  assert.match(ics, /LOCATION:Provo\\, UT/);
+});
+
+test("research panel distinguishes live results from demo mode", () => {
+  assert.match(renderResearchPanel({ source: "demo", opportunities: [] }), /Turn on live mode/);
+  const html = renderResearchPanel({
+    source: "live", profile_summary: "Matched to data engineering", searched_at: "2026-10-02", window_ends: "2026-12-31",
+    opportunities: [{ id: "r1", kind: "person", title: "Public data community", summary: "A public path", why_it_fits: "Relevant", source_name: "Community", source_url: "https://example.com/source", action_url: "https://example.com/action", on_radar: false }],
+  });
+  assert.match(html, /Public data community/);
+  assert.match(html, /Save to radar/);
 });
 
 test("loadReminders caches until forced", async () => {
