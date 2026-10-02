@@ -1,0 +1,38 @@
+GAME_CONFIGS = {
+    "elevator_pitch": {
+        "title": "Elevator Pitch",
+        "max_turns": 1,
+        "xp": 10,
+        "persona": "a recruiter at a busy career fair booth with 30 seconds to spare",
+        "goal": "Introduce yourself: who you are, something you've built, and what you are looking for.",
+        "rubric": ["clarity", "memorability", "relevance"],
+        "opening_line": "Hi, I have about 30 seconds before the next student arrives. What are you working on?",
+    },
+    "coffee_chat": {
+        "title": "Coffee Chat",
+        "max_turns": 4,
+        "xp": 15,
+        "persona": "a software engineer who agreed to a 15-minute coffee chat",
+        "goal": "Learn about their work and leave with a natural reason to follow up.",
+        "rubric": ["curiosity", "specificity", "rapport"],
+        "opening_line": "Thanks for making time. I work on data platforms and enjoy meeting students who are curious about the work.",
+    },
+    "follow_up": {
+        "title": "Follow-Up",
+        "max_turns": 1,
+        "xp": 10,
+        "persona": "a data engineer the student met at an info session 10 days ago",
+        "goal": "Write a follow-up message that gives them a genuine reason to reply.",
+        "rubric": ["specificity", "value_to_them", "low_pressure"],
+        "opening_line": "Hey, good to hear from you. I remember we talked about your team moving to dbt.",
+    },
+    "cold_call": {
+        "title": "Cold Outreach",
+        "max_turns": 3,
+        "xp": 20,
+        "persona": "a busy hiring manager who has never met the student",
+        "goal": "Earn a reply and a small, specific next step without wasting their time.",
+        "rubric": ["hook", "respect_for_time", "clear_ask"],
+        "opening_line": "I have a minute before my next meeting. What made you reach out?",
+    },
+}

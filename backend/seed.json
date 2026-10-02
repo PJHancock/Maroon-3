@@ -1,0 +1,95 @@
+{
+  "user": {
+    "name": "Alex",
+    "school": "BYU",
+    "major": "Computer Science",
+    "target_roles": ["Data Engineer"],
+    "xp": 340,
+    "streak": 4,
+    "last_active": "2026-10-01",
+    "today_connection_done": false
+  },
+  "contacts": [
+    {
+      "id": "c1",
+      "name": "Sarah",
+      "how_met": "Mom's friend",
+      "company": "BYU",
+      "role": "Research scientist",
+      "notes": ["Grant deadline mid-October", "Lab website is outdated"],
+      "last_contact": "2026-09-10"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "title": "Attend the Qualtrics info session",
+      "description": "Go to one event and leave with one specific detail about someone's work.",
+      "type": "in_person",
+      "difficulty": "medium",
+      "location": "Real-world connection",
+      "xp": 75,
+      "status": "open"
+    },
+    {
+      "id": "t2",
+      "title": "Set up a 15-minute personal chat",
+      "description": "Invite a mentor, classmate, professor, or former coworker to a short conversation.",
+      "type": "personal_chat",
+      "difficulty": "medium",
+      "location": "Coffee, walk, or video chat",
+      "xp": 60,
+      "status": "open"
+    },
+    {
+      "id": "t3",
+      "title": "Reach out to one new person online",
+      "description": "Find someone whose work interests you and send a specific, low-pressure question.",
+      "type": "online_outreach",
+      "difficulty": "easy",
+      "location": "LinkedIn or community forum",
+      "xp": 30,
+      "status": "open"
+    },
+    {
+      "id": "t4",
+      "title": "Call someone you have been meaning to contact",
+      "description": "Make a real phone call and leave a clear reason for reconnecting if they miss it.",
+      "type": "call",
+      "difficulty": "medium",
+      "location": "Phone call",
+      "xp": 45,
+      "status": "open"
+    },
+    {
+      "id": "t5",
+      "title": "Attend a nearby data or tech event",
+      "description": "Find a relevant meetup, campus event, or hack night and talk to one person there.",
+      "type": "event",
+      "difficulty": "hard",
+      "location": "Nearby event · AI search later",
+      "event_search": true,
+      "xp": 100,
+      "status": "open"
+    },
+    {
+      "id": "t6",
+      "title": "Follow up on a recent conversation",
+      "description": "Send one person a message grounded in something they actually told you.",
+      "type": "follow_up",
+      "difficulty": "easy",
+      "location": "Message or email",
+      "xp": 40,
+      "status": "open"
+    }
+  ],
+  "game_sessions": [
+    {
+      "id": "g1",
+      "game": "coffee_chat",
+      "date": "2026-09-30",
+      "scores": {"curiosity": 4, "specificity": 2, "rapport": 3},
+      "xp": 15
+    }
+  ]
+}
