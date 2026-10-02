@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseRoute, esc, daysSince, todayISO, normalizeState, computeCelebration,
   api, post, ApiError, setMockMode, registerScreen, getScreen, celebrate, _setState, getState,
+  applyDebugXp, isDebugMode,
 } from "../../frontend/app.js";
 import { resetMock, setMockDelay } from "../../frontend/mock.js";
 
@@ -173,6 +174,26 @@ test("computeCelebration falls back to the XP difference", () => {
 
 test("computeCelebration survives missing state", () => {
   assert.deepEqual(computeCelebration(null, null), { xp: 0, streakUp: false, streak: 0 });
+});
+
+test("applyDebugXp adds XP locally without mutating the input", () => {
+  const before = { user: { name: "Alex", xp: 340, streak: 4 }, contacts: [{ id: "c1" }] };
+  const { state, celebration } = applyDebugXp(before, 75);
+  assert.equal(state.user.xp, 415);
+  assert.equal(state.user.streak, 4);
+  assert.equal(state.contacts.length, 1);
+  assert.equal(before.user.xp, 340);
+  assert.deepEqual(celebration, { xp: 75, streakUp: false, streak: 4 });
+});
+
+test("applyDebugXp can bump the streak and works with no state", () => {
+  assert.deepEqual(applyDebugXp({ user: { xp: 0, streak: 4 } }, 15, { streak: true }).celebration,
+    { xp: 15, streakUp: true, streak: 5 });
+  assert.equal(applyDebugXp(null, 10).state.user.xp, 10);
+});
+
+test("isDebugMode is off without ?debug=1", () => {
+  assert.equal(isDebugMode(), false);
 });
 
 test("celebrate refreshes state after an XP action (mock backend)", async () => {

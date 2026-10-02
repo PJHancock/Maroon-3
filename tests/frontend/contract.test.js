@@ -64,9 +64,15 @@ test("POST /api/coach/draft", async () => {
 const mockOnly = { skip: LIVE ? "mutates data; mock only" : false };
 
 test("POST /api/contacts", mockOnly, async () => {
-  const c = await post("/api/contacts", { name: "Marcus", how_met: "Info session", company: "Qualtrics", role: "DE", notes: ["dbt"] });
+  const c = await post("/api/contacts", {
+    name: "Marcus", how_met: "Info session", last_contact: "2026-09-28", company: "Qualtrics", role: "DE",
+    phone: "801-555-0123", email: "marcus@qualtrics.com", notes: ["dbt"],
+  });
   checkContact(c);
   assert.equal(c.name, "Marcus");
+  assert.equal(c.last_contact, "2026-09-28", "date from the form is kept");
+  assert.equal(c.phone, "801-555-0123", "phone is kept");
+  assert.equal(c.email, "marcus@qualtrics.com", "email is kept");
 });
 
 test("POST /api/tasks/{id}/complete", mockOnly, async () => {

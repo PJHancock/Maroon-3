@@ -105,6 +105,15 @@ test("renderHome works from seed state", () => {
   assert.match(html, /Qualtrics/);
 });
 
+test("renderHome only shows the debug panel when asked", () => {
+  const state = normalizeState(SEED);
+  assert.doesNotMatch(renderHome(state), /debug-panel/);
+  const html = renderHome(state, { debug: true });
+  assert.match(html, /debug-panel/);
+  assert.match(html, /data-debug-xp="10"/);
+  assert.match(html, /data-debug-streak="1"/);
+});
+
 test("normalizeDraft accepts several response shapes", () => {
   assert.equal(normalizeDraft("hi"), "hi");
   assert.equal(normalizeDraft({ message: "a" }), "a");
