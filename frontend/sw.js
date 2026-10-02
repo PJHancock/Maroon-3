@@ -1,4 +1,4 @@
-const CACHE_NAME = "networking-buddy-shell-v2";
+const CACHE_NAME = "networking-buddy-shell-v3";
 const APP_SHELL = [
   "/",
   "/styles_b.css",

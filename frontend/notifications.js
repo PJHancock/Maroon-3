@@ -1,4 +1,4 @@
-import { registerScreen, openSheet, closeSheet } from "./app_b.js";
+import { registerScreen, openSheet, closeSheet, getState, refreshState } from "./app_b.js";
 
 let notifications = [
     { title: "Follow Up", body: "It's been 3 days since you met Alice. Time to follow up!", time: "2m ago", icon: "👥" },
@@ -17,10 +17,27 @@ function saveSettings(newSettings) {
 }
 
 function renderNotificationsList() {
-    if (notifications.length === 0) {
+    let list = [...notifications];
+    
+    if (settings.eventsEnabled) {
+        const state = getState();
+        if (state && state.tasks) {
+            const eventTasks = state.tasks.filter(t => t.type === 'event' || t.prep_context?.kind === 'event');
+            eventTasks.forEach(task => {
+                const title = task.prep_context?.title || task.title;
+                const body = task.prep_context?.summary || "You have an event coming up. Tap here to prepare.";
+                const time = task.prep_context?.starts_at ? new Date(task.prep_context.starts_at).toLocaleDateString() : "Upcoming";
+                if (!list.find(n => n.title === title)) {
+                    list.push({ title, body, time, icon: "🎉", isDynamic: true });
+                }
+            });
+        }
+    }
+
+    if (list.length === 0) {
         return `<div class="empty">No notifications right now.</div>`;
     }
-    return notifications.map((n, i) => `
+    return list.map((n, i) => `
         <div class="card" style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; position: relative;">
             <div style="font-size: 24px;">${n.icon}</div>
             <div style="flex: 1; padding-right: 20px;">
@@ -30,7 +47,7 @@ function renderNotificationsList() {
                 </div>
                 <div style="font-size: 14px; color: var(--text-light);">${n.body}</div>
             </div>
-            <button class="btn-dismiss" data-index="${i}" style="position: absolute; top: 8px; right: 8px; background: none; border: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--text-light); padding: 0;" aria-label="Dismiss">&times;</button>
+            ${n.isDynamic ? '' : `<button class="btn-dismiss" data-index="${i}" style="position: absolute; top: 8px; right: 8px; background: none; border: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--text-light); padding: 0;" aria-label="Dismiss">&times;</button>`}
         </div>
     `).join('');
 }
@@ -68,6 +85,8 @@ function openSettings() {
             eventsEnabled: document.getElementById('notif-events').checked
         });
         closeSheet();
+        const listEl = document.getElementById('notifications-list');
+        if (listEl) listEl.innerHTML = renderNotificationsList();
     };
 }
 
@@ -95,8 +114,11 @@ function triggerNotification(el) {
     }
 }
 
+
 registerScreen("notifications", {
-    show({ el }) {
+    async show({ el }) {
+        if (!getState()) await refreshState();
+
         el.innerHTML = `
             <header class="block-head">
                 <h1>Notifications</h1>
