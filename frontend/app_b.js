@@ -95,7 +95,7 @@ export async function api(path, { method, body } = {}) {
   }
   if (!resp.ok) {
     const detail = Array.isArray(data?.detail)
-      ? data.detail.map((issue) => issue.msg || issue.message || String(issue)).join("; ")
+      ? data?.detail?.map((issue) => issue.msg || issue.message || String(issue)).join("; ")
       : data?.detail ?? resp.statusText;
     throw new ApiError(`${method} ${path} failed: ${detail}`, resp.status);
   }
@@ -147,7 +147,7 @@ export function _setState(s) {
 
 // ---------- router ----------
 
-export const SCREENS = ["home", "contacts", "game", "score", "task"];
+export const SCREENS = ["home", "contacts", "notifications", "game", "score", "task"];
 
 const screens = {};
 let started = false;
