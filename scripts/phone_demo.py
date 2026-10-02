@@ -40,6 +40,8 @@ def main() -> None:
     print(f"Phone URL:  http://{ip}:{port}/", flush=True)
     print(f"Laptop URL: http://127.0.0.1:{port}/", flush=True)
     print("Keep this terminal open and connect the phone to the same Wi-Fi.", flush=True)
+    print("Note: phones only allow notifications (and app install) over https://. For those, run", flush=True)
+    print(f"      cloudflared tunnel --url http://localhost:{port}   and open its https:// link instead.", flush=True)
     if os.getenv("DEMO_MODE", "1") == "0":
         print("Live mode is enabled; Claude calls use the server-side .env key.", flush=True)
     else:

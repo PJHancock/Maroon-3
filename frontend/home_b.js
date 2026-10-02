@@ -239,13 +239,32 @@ export function renderResearchPanel(response) {
 export function renderDebugPanel() {
   return `
     <div class="debug-panel">
-      <strong>🐞 Debug</strong> <small>local only, resets on refresh</small>
+      <strong>🐞 Debug</strong> <small>XP buttons are local only and reset on refresh</small>
       <div class="debug-buttons">
         <button class="btn btn-small btn-ghost" data-debug-xp="10">+10 XP</button>
         <button class="btn btn-small btn-ghost" data-debug-xp="75">+75 XP</button>
         <button class="btn btn-small btn-ghost" data-debug-xp="15" data-debug-streak="1">+15 XP & streak</button>
+        <button class="btn btn-small btn-ghost debug-reset" data-action="reset-demo">↺ Reset demo</button>
       </div>
     </div>`;
+}
+
+// Puts the whole app back to its first-launch state: server data from seed.json
+// (so the welcome and registration screens show again) and browser-saved settings.
+async function resetDemo(button) {
+  if (!confirm("Reset Nudge to its starting state? This erases contacts, tasks, XP, and your Radar.")) return;
+  button.disabled = true;
+  button.textContent = "Resetting…";
+  try {
+    await post("/api/reset");
+    try { localStorage.removeItem("notificationSettings"); } catch { /* storage may be unavailable */ }
+    location.hash = "#/home";
+    location.reload();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "↺ Reset demo";
+    toast(`Couldn't reset: ${err.message}`);
+  }
 }
 
 function onboardingValue(user, name) {
@@ -576,6 +595,8 @@ registerScreen("home", {
       }
       const dbg = e.target.closest("[data-debug-xp]");
       if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
+      const reset = e.target.closest("[data-action=reset-demo]");
+      if (reset) resetDemo(reset);
     };
     showCoach(el, false);
     showOpportunities(el);

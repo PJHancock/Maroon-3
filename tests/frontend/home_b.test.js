@@ -199,6 +199,8 @@ test("renderHome only shows the debug panel when asked", () => {
   assert.match(html, /debug-panel/);
   assert.match(html, /data-debug-xp="10"/);
   assert.match(html, /data-debug-streak="1"/);
+  assert.match(html, /data-action="reset-demo"[^>]*>↺ Reset demo</);
+  assert.doesNotMatch(renderHome(state), /reset-demo/, "reset only appears with ?debug=1");
 });
 
 test("normalizeDraft accepts several response shapes", () => {
