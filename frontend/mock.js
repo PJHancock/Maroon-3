@@ -125,7 +125,8 @@ function route(method, path, body) {
     const contact = {
       id: `c${db.contacts.length + 1}`, name: body?.name ?? "", how_met: body?.how_met ?? "",
       company: body?.company ?? "", role: body?.role ?? "",
-      notes: Array.isArray(body?.notes) ? body.notes : [], last_contact: today(),
+      phone: body?.phone ?? "", email: body?.email ?? "",
+      notes: Array.isArray(body?.notes) ? body.notes : [], last_contact: body?.last_contact || today(),
     };
     db.contacts.push(contact);
     return contact;
