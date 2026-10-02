@@ -4,6 +4,7 @@
 import {
   registerScreen, getState, refreshState, post, esc,
   openSheet, closeSheet, copyText, toast,
+  isDebugMode, applyDebugXp, showCelebration, _setState,
 } from "./app.js";
 
 // Mirrors GAME_CONFIGS in backend/games.py (title + XP only).
@@ -108,8 +109,21 @@ export function renderGamePicker(games = GAMES) {
     </a>`).join("")}</div>`;
 }
 
-export function renderHome(state) {
+export function renderDebugPanel() {
   return `
+    <div class="debug-panel">
+      <strong>🐞 Debug</strong> <small>local only, resets on refresh</small>
+      <div class="debug-buttons">
+        <button class="btn btn-small btn-ghost" data-debug-xp="10">+10 XP</button>
+        <button class="btn btn-small btn-ghost" data-debug-xp="75">+75 XP</button>
+        <button class="btn btn-small btn-ghost" data-debug-xp="15" data-debug-streak="1">+15 XP & streak</button>
+      </div>
+    </div>`;
+}
+
+export function renderHome(state, { debug = false } = {}) {
+  return `
+    ${debug ? renderDebugPanel() : ""}
     ${renderStats(state.user)}
     ${renderGreeting(state.user)}
     <section class="block">
@@ -157,6 +171,25 @@ export async function loadReminders({ force = false } = {}) {
 }
 
 // ---------- screen ----------
+
+// Updates the stats bar in place so the XP fill animates instead of jumping.
+function updateStats(el, user) {
+  const stats = el.querySelector(".stats");
+  if (!stats) return;
+  const fresh = document.createElement("div");
+  fresh.innerHTML = renderStats(user);
+  const next = fresh.firstElementChild;
+  stats.querySelector(".streak-num").textContent = next.querySelector(".streak-num").textContent;
+  stats.querySelector(".xp-label").innerHTML = next.querySelector(".xp-label").innerHTML;
+  stats.querySelector(".xp-fill").style.width = next.querySelector(".xp-fill").style.width;
+}
+
+function debugXp(el, xp, streak) {
+  const { state, celebration } = applyDebugXp(getState(), xp, { streak });
+  _setState(state);
+  updateStats(el, state.user);
+  showCelebration(celebration);
+}
 
 async function showCoach(el, force) {
   const box = el.querySelector("#coach-cards");
@@ -209,9 +242,11 @@ registerScreen("home", {
       state = getState();
       if (!state) throw err;
     }
-    el.innerHTML = renderHome(state);
+    el.innerHTML = renderHome(state, { debug: isDebugMode() });
     el.onclick = (e) => {
       if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);
+      const dbg = e.target.closest("[data-debug-xp]");
+      if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
     };
     showCoach(el, false);
   },
