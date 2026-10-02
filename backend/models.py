@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 NoteText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 OptionalText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
+LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=8000)]
 EmailText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 UrlText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
 Source = Literal["demo", "live", "fallback"]
@@ -27,7 +28,13 @@ class User(Contract):
     last_active: date | None = None
     today_connection_done: bool = False
     location: OptionalText = "Provo, UT"
+    target_company: OptionalText = ""
     onboarding_goal: Literal["job", "company", "general"] | None = None
+    resume_text: LongText = ""
+    personal_projects: list[NoteText] = Field(default_factory=list, max_length=20)
+    existing_connections: list[NoteText] = Field(default_factory=list, max_length=20)
+    interests: list[ShortText] = Field(default_factory=list, max_length=20)
+    onboarding_complete: bool = False
 
 
 class ContactCreate(Contract):
@@ -317,9 +324,18 @@ class DraftResponse(Contract):
 
 
 class OnboardingRequest(Contract):
-    goal: Literal["job", "company", "general"]
+    goal: Literal["job", "company", "general"] = "general"
+    name: OptionalText = ""
+    university: OptionalText = ""
+    major: OptionalText = ""
+    location: OptionalText = ""
     target_company: OptionalText = ""
     target_role: OptionalText = ""
+    target_roles: list[ShortText] = Field(default_factory=list, max_length=8)
+    resume_text: LongText = ""
+    personal_projects: list[NoteText] = Field(default_factory=list, max_length=20)
+    existing_connections: list[NoteText] = Field(default_factory=list, max_length=20)
+    interests: list[ShortText] = Field(default_factory=list, max_length=20)
 
 
 class SuggestionsResponse(Contract):

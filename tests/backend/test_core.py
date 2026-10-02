@@ -19,6 +19,7 @@ from backend.games import GAME_CONFIGS
 from backend.llm import ClaudeAI, ProviderFailure
 from backend.models import (
     ContactCreate, ContactUpdate, DraftRequest, HistoryRequest, Message,
+    OnboardingRequest,
     ResearchCandidate, ResearchPayload, TaskComplete, TaskContext,
 )
 from backend.services import BuddyService, award_xp
@@ -69,6 +70,23 @@ class Fixture(unittest.IsolatedAsyncioTestCase):
         self.assertIn("dbt", reminders.reminders[0].reason)
         self.assertIn("specificity", reminders.reminders[0].tip)
         self.assertIn("next week", reminders.reminders[0].reason)
+
+    def test_onboarding_saves_profile_and_marks_first_run_complete(self):
+        state = self.service.complete_onboarding(OnboardingRequest(
+            goal="job", name="Jordan", university="UVU", major="Information Systems",
+            location="Orem, UT", target_company="Adobe", target_roles=["Data Analyst", "Data Engineer"],
+            resume_text="Built reporting dashboards for a student club.",
+            personal_projects=["Transit dashboard with SQL"],
+            existing_connections=["Maya — UVU alum at Adobe"],
+            interests=["Data quality", "Education"],
+        ))
+        self.assertTrue(state.user.onboarding_complete)
+        self.assertEqual(state.user.name, "Jordan")
+        self.assertEqual(state.user.school, "UVU")
+        self.assertEqual(state.user.target_roles, ["Data Analyst", "Data Engineer"])
+        self.assertEqual(state.user.target_company, "Adobe")
+        self.assertEqual(state.user.personal_projects, ["Transit dashboard with SQL"])
+        self.assertEqual(self.repo.load_db().user.existing_connections, ["Maya — UVU alum at Adobe"])
 
     async def test_all_games_use_same_engine(self):
         for name, game in GAME_CONFIGS.items():

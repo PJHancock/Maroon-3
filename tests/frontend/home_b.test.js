@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
-  renderDraftSheet, renderSuggestionSheet, renderProposedTasks, loadReminders, _resetCoachCache, eventToICS, renderResearchPanel,
+  renderDraftSheet, renderSuggestionSheet, renderProposedTasks, loadReminders, _resetCoachCache, eventToICS, renderResearchPanel, renderOnboarding, renderWelcome,
 } from "../../frontend/home_b.js";
 import { setMockMode, normalizeState } from "../../frontend/app_b.js";
 import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
@@ -173,6 +173,23 @@ test("renderHome works from seed state", () => {
   assert.match(html, /Hi, Alex!/);
   assert.match(html, /id="coach-cards"/);
   assert.match(html, /Qualtrics/);
+});
+
+test("renderOnboarding includes the profile inputs and escapes saved values", () => {
+  const html = renderOnboarding({ name: "<Alex>", school: "BYU", major: "CS", target_roles: ["Data Engineer"], personal_projects: ["Pipeline <one>"], onboarding_goal: "job" });
+  assert.match(html, /Let’s make this personal/);
+  assert.match(html, /name="resume_text"/);
+  assert.match(html, /name="personal_projects"/);
+  assert.match(html, /name="existing_connections"/);
+  assert.match(html, /&lt;Alex&gt;/);
+  assert.match(html, /Pipeline &lt;one&gt;/);
+});
+
+test("renderWelcome explains the value and starts setup", () => {
+  const html = renderWelcome();
+  assert.match(html, /Build your network/);
+  assert.match(html, /Personalized to you/);
+  assert.match(html, /data-action="start-onboarding"/);
 });
 
 test("renderHome only shows the debug panel when asked", () => {

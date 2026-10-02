@@ -248,6 +248,121 @@ export function renderDebugPanel() {
     </div>`;
 }
 
+function onboardingValue(user, name) {
+  return esc(user?.[name] ?? "");
+}
+
+function onboardingLines(values) {
+  return Array.isArray(values) ? values.join("\n") : "";
+}
+
+export function renderWelcome() {
+  return `<div class="welcome-screen">
+    <div class="welcome-mark">🤝</div>
+    <div class="intro-kicker">NETWORKING BUDDY</div>
+    <h1>Build your network, one real connection at a time.</h1>
+    <p class="muted welcome-lede">Your coach will help you find the right people, practice what to say, and follow up in a way that feels genuine.</p>
+    <div class="welcome-points">
+      <div><span>🎯</span><strong>Personalized to you</strong><small>Recommendations shaped around your goals and experience.</small></div>
+      <div><span>💬</span><strong>Better conversations</strong><small>Get specific questions and invitations you can actually send.</small></div>
+      <div><span>🌱</span><strong>Small steps that stick</strong><small>Turn one conversation into a repeatable habit.</small></div>
+    </div>
+    <button class="btn welcome-start" type="button" data-action="start-onboarding">Get started</button>
+    <p class="muted welcome-note">It takes about two minutes to set up.</p>
+  </div>`;
+}
+
+export function renderOnboarding(user = {}) {
+  return `<div class="intro-screen">
+    <div class="intro-kicker">NETWORKING BUDDY</div>
+    <h1>Let’s make this personal.</h1>
+    <p class="muted intro-lede">Tell your coach about you once, and it can help you find the right people and write invitations that sound like you.</p>
+    <form class="card intro-form" novalidate>
+      <h2>About you</h2>
+      <label class="field"><span>Your name *</span><input name="name" required maxlength="200" value="${onboardingValue(user, "name")}" autocomplete="name"></label>
+      <label class="field"><span>University or school *</span><input name="university" required maxlength="200" value="${onboardingValue(user, "school")}"></label>
+      <label class="field"><span>Major or area of study *</span><input name="major" required maxlength="200" value="${onboardingValue(user, "major")}"></label>
+      <label class="field"><span>Where are you based?</span><input name="location" maxlength="200" value="${onboardingValue(user, "location")}" placeholder="Provo, UT"></label>
+
+      <h2>Where you’re headed</h2>
+      <label class="field"><span>Desired job roles *</span><input name="target_roles" required maxlength="800" value="${esc((user?.target_roles ?? []).join(", "))}" placeholder="Data Engineer, Analytics Engineer"></label>
+      <label class="field"><span>Companies or teams you’re curious about</span><input name="target_company" maxlength="200" placeholder="Optional"></label>
+      <label class="field"><span>What are you hoping to work toward?</span><select name="goal"><option value="job">Find a job or internship</option><option value="company">Explore a company</option><option value="general" selected>Build my professional network</option></select></label>
+
+      <h2>Your story</h2>
+      <label class="field"><span>Resume or background</span><textarea name="resume_text" rows="6" maxlength="8000" placeholder="Paste a resume, short bio, or the experience you want your coach to know about.">${onboardingValue(user, "resume_text")}</textarea></label>
+      <label class="field"><span>Personal projects</span><textarea name="personal_projects" rows="4" placeholder="One project per line — include what you built and what you learned.">${esc(onboardingLines(user?.personal_projects))}</textarea></label>
+      <label class="field"><span>People you already know</span><textarea name="existing_connections" rows="4" placeholder="One person or community per line — e.g. Maya, BYU alum at Adobe, met through class.">${esc(onboardingLines(user?.existing_connections))}</textarea></label>
+      <label class="field"><span>Interests you’d enjoy talking about</span><input name="interests" maxlength="800" value="${esc((user?.interests ?? []).join(", "))}" placeholder="Data quality, education, hiking"></label>
+      <p class="muted intro-privacy">This profile stays in your app and is used to make your coaching and invitations more relevant.</p>
+      <button class="btn intro-submit" type="submit">Build my personalized plan</button>
+      <div class="error-box intro-error" hidden></div>
+    </form>
+  </div>`;
+}
+
+function splitProfileValues(value) {
+  return String(value ?? "").split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function profileLines(value) {
+  return String(value ?? "").split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function bindOnboarding(el, user) {
+  const form = el.querySelector(".intro-form");
+  if (!form) return;
+  form.querySelector("[name=goal]").value = user?.onboarding_goal ?? "general";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(form).entries());
+    const payload = {
+      goal: values.goal || "general",
+      name: String(values.name ?? "").trim(),
+      university: String(values.university ?? "").trim(),
+      major: String(values.major ?? "").trim(),
+      location: String(values.location ?? "").trim(),
+      target_company: String(values.target_company ?? "").trim(),
+      target_roles: splitProfileValues(values.target_roles),
+      resume_text: String(values.resume_text ?? "").trim(),
+      personal_projects: profileLines(values.personal_projects),
+      existing_connections: profileLines(values.existing_connections),
+      interests: splitProfileValues(values.interests),
+    };
+    const error = form.querySelector(".intro-error");
+    const missing = ["name", "university", "major"].filter((field) => !payload[field]);
+    if (!payload.target_roles.length) missing.push("target roles");
+    if (missing.length) {
+      error.textContent = `Please add ${missing.join(", ")}.`;
+      error.hidden = false;
+      return;
+    }
+    const button = form.querySelector("button[type=submit]");
+    button.disabled = true;
+    button.textContent = "Saving your profile…";
+    error.hidden = true;
+    try {
+      const next = await post("/api/onboarding", payload);
+      _setState(next);
+      document.querySelector(".tabbar")?.removeAttribute("hidden");
+      el.innerHTML = renderHome(next, { debug: isDebugMode() });
+      showCoach(el, false);
+      showOpportunities(el);
+      toast("Your personalized plan is ready!");
+    } catch (err) {
+      error.textContent = `Couldn’t save your profile (${err.message}).`;
+      error.hidden = false;
+      button.disabled = false;
+      button.textContent = "Build my personalized plan";
+    }
+  });
+}
+
+function showOnboardingSurvey(el, user) {
+  el.innerHTML = renderOnboarding(user);
+  bindOnboarding(el, user);
+}
+
 export function renderHome(state, { debug = false } = {}) {
   return `
     ${debug ? renderDebugPanel() : ""}
@@ -404,6 +519,21 @@ registerScreen("home", {
       state = getState();
       if (!state) throw err;
     }
+    if (state.user.onboarding_complete === false) {
+      document.querySelector(".tabbar")?.setAttribute("hidden", "hidden");
+      if (!el.dataset.onboardingStarted) {
+        el.innerHTML = renderWelcome();
+        el.querySelector("[data-action=start-onboarding]")?.addEventListener("click", () => {
+          el.dataset.onboardingStarted = "true";
+          showOnboardingSurvey(el, state.user);
+        });
+      } else {
+        showOnboardingSurvey(el, state.user);
+      }
+      return;
+    }
+    delete el.dataset.onboardingStarted;
+    document.querySelector(".tabbar")?.removeAttribute("hidden");
     el.innerHTML = renderHome(state, { debug: isDebugMode() });
     el.onclick = (e) => {
       if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);

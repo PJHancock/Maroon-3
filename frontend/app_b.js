@@ -120,6 +120,7 @@ export function normalizeState(raw) {
       name: user.name ?? "You",
       xp: Number(user.xp) || 0,
       streak: Number(user.streak) || 0,
+      onboarding_complete: user.onboarding_complete,
     },
     contacts: Array.isArray(s.contacts) ? s.contacts : [],
     tasks: Array.isArray(s.tasks) ? s.tasks : Array.isArray(s.open_tasks) ? s.open_tasks : [],
