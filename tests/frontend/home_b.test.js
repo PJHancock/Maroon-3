@@ -65,10 +65,39 @@ test("renderCoachCards leaves out optional fields that are missing", () => {
   const html = renderCoachCards([{ contact_id: "c1", headline: "Hi" }], contacts);
   assert.doesNotMatch(html, /coach-tip/);
   assert.doesNotMatch(html, /coach-action/);
+  assert.match(html, /No extra details/);
+});
+
+test("reminders start collapsed: title and contact in the summary, details hidden", () => {
+  const html = renderCoachCards([{
+    contact_id: "c1", headline: "Ask Sarah about the grant", reason: "Deadline passed", suggested_action: "Ask how it went", tip: "Be specific",
+  }], contacts, "2026-10-02");
+  const [summary, details] = html.split('<div class="coach-details"');
+  assert.match(summary, /Ask Sarah about the grant/);
+  assert.match(summary, /Sarah/);
+  assert.match(summary, /Research scientist · BYU/);
+  assert.match(summary, /Met: Mom&#39;s friend · Talked 22 days ago/);
+  assert.match(summary, /data-action="toggle-reminder" aria-expanded="false"/);
+  assert.doesNotMatch(summary, /Deadline passed|Ask how it went|Be specific/, "details aren't in the summary");
+  assert.match(details, /^ id="reminder-details-0" hidden>/);
+  assert.match(details, /Deadline passed/);
+  assert.match(details, /Get conversation ideas/);
+});
+
+test("reminder meta line drops parts the contact doesn't have", () => {
+  const html = renderCoachCards([{ contact_id: "x", headline: "Hi" }], [{ id: "x", name: "Z" }], "2026-10-02");
+  assert.doesNotMatch(html, /coach-meta/);
+  const unknown = renderCoachCards([{ contact_id: "missing", headline: "Hi" }], contacts, "2026-10-02");
+  assert.match(unknown, /A contact/);
 });
 
 test("renderCoachCards shows an empty state", () => {
-  assert.match(renderCoachCards([], contacts), /No suggestions/);
+  assert.match(renderCoachCards([], contacts), /No reminders right now/);
+});
+
+test("the home section is titled Reminders", () => {
+  assert.match(renderHome(normalizeState(SEED)), /<h2>Reminders<\/h2>/);
+  assert.doesNotMatch(renderHome(normalizeState(SEED)), /Your coach/);
 });
 
 test("renderCoachError offers a retry", () => {

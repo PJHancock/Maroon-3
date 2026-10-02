@@ -98,12 +98,12 @@ function triggerNotification(el) {
 registerScreen("notifications", {
     show({ el }) {
         el.innerHTML = `
-            <header class="header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px;">
-                <h1 style="margin: 0;">Notifications</h1>
-                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 14px;" id="btn-notif-settings">⚙️ Settings</button>
+            <header class="block-head">
+                <h1>Notifications</h1>
+                <button class="icon-btn" id="btn-notif-settings" aria-label="Notification settings" title="Notification settings">⚙️</button>
             </header>
-            
-            <div style="padding: 16px; padding-top: 0;">
+
+            <div>
                 <button class="btn" id="btn-trigger-notif" style="width: 100%; margin-bottom: 20px;">Get Notifications (Demo)</button>
                 
                 <div id="notifications-list">

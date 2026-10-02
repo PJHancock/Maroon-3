@@ -6,6 +6,7 @@ import {
   openSheet, closeSheet, copyText, toast,
   isDebugMode, applyDebugXp, showCelebration, _setState,
 } from "./app_b.js";
+import { lastContactLabel } from "./contacts_b.js";
 
 // Mirrors GAME_CONFIGS in backend/games.py (title + XP only).
 export const GAMES = [
@@ -58,24 +59,37 @@ export function joinReminders(reminders, contacts) {
   }));
 }
 
-export function renderCoachCards(reminders, contacts) {
+// Reminder cards start collapsed (title + who it's about); tapping the summary
+// expands the reason, suggested action, tip, and the conversation-ideas button.
+export function renderCoachCards(reminders, contacts, today) {
   const cards = joinReminders(reminders, contacts);
   if (!cards.length) {
-    return `<div class="empty">No suggestions right now. Complete a task to meet someone new!</div>`;
+    return `<div class="empty">No reminders right now. Complete a task to meet someone new!</div>`;
   }
   return cards.map((r, i) => {
     const name = r.contact?.name ?? "A contact";
     const sub = [r.contact?.role, r.contact?.company].filter(Boolean).join(" · ");
+    const meta = [
+      r.contact?.how_met ? `Met: ${r.contact.how_met}` : "",
+      lastContactLabel(r.contact?.last_contact, today),
+    ].filter(Boolean).join(" · ");
+    const hasDetails = r.reason || r.suggested_action || r.tip;
     return `
-      <button class="card coach-card" data-coach-index="${i}">
-        <div class="coach-who"><span class="avatar">${esc(name[0] ?? "?")}</span>
-          <span><strong>${esc(name)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}</span></div>
-        <div class="coach-headline">${esc(r.headline ?? "Worth reaching out")}</div>
-        ${r.reason ? `<p class="coach-reason">${esc(r.reason)}</p>` : ""}
-        ${r.suggested_action ? `<p class="coach-action">👉 ${esc(r.suggested_action)}</p>` : ""}
-        ${r.tip ? `<p class="coach-tip">💡 ${esc(r.tip)}</p>` : ""}
-        <span class="coach-cta">Get conversation ideas →</span>
-      </button>`;
+      <article class="card coach-card" data-coach-card="${i}">
+        <button class="coach-summary" data-action="toggle-reminder" aria-expanded="false" aria-controls="reminder-details-${i}">
+          <span class="coach-who"><span class="avatar">${esc(name[0] ?? "?")}</span>
+            <span class="coach-who-text"><strong>${esc(name)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}${meta ? `<small class="coach-meta">${esc(meta)}</small>` : ""}</span>
+            <span class="coach-chevron" aria-hidden="true">▾</span></span>
+          <span class="coach-headline">${esc(r.headline ?? "Worth reaching out")}</span>
+        </button>
+        <div class="coach-details" id="reminder-details-${i}" hidden>
+          ${r.reason ? `<p class="coach-reason">${esc(r.reason)}</p>` : ""}
+          ${r.suggested_action ? `<p class="coach-action">👉 ${esc(r.suggested_action)}</p>` : ""}
+          ${r.tip ? `<p class="coach-tip">💡 ${esc(r.tip)}</p>` : ""}
+          ${hasDetails ? "" : `<p class="muted">No extra details for this reminder.</p>`}
+          <button class="btn btn-small" data-coach-index="${i}">Get conversation ideas</button>
+        </div>
+      </article>`;
   }).join("");
 }
 
@@ -217,7 +231,7 @@ export function renderHome(state, { debug = false } = {}) {
     ${renderStats(state.user)}
     ${renderGreeting(state.user)}
     <section class="block">
-      <div class="block-head"><h2>Your coach</h2>
+      <div class="block-head"><h2>Reminders</h2>
         <button class="btn btn-small btn-ghost" data-action="refresh-coach">↻ Refresh</button></div>
       <div id="coach-cards">${renderCoachLoading()}</div>
     </section>
@@ -289,7 +303,16 @@ async function showCoach(el, force) {
   if (force || !coachCache) box.innerHTML = renderCoachLoading();
   try {
     const reminders = await loadReminders({ force });
-    box.innerHTML = renderCoachCards(reminders, getState()?.contacts);
+    box.innerHTML = renderCoachCards(reminders, getState()?.contacts, getState()?.today);
+    box.querySelectorAll("[data-action=toggle-reminder]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const details = btn.parentElement.querySelector(".coach-details");
+        const open = details.hidden;
+        details.hidden = !open;
+        btn.setAttribute("aria-expanded", String(open));
+        btn.closest(".coach-card").classList.toggle("open", open);
+      });
+    });
     box.querySelectorAll("[data-coach-index]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const r = joinReminders(reminders, getState()?.contacts)[Number(btn.dataset.coachIndex)];
