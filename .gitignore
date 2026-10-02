@@ -1,0 +1,6 @@
+.env
+backend/db.json
+backend/db.tmp
+__pycache__/
+*.py[cod]
+.pytest_cache/

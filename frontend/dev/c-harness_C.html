@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#58CC02">
+  <link rel="manifest" href="../manifest_C.json">
+  <link rel="stylesheet" href="../styles_C.css">
+  <title>Networking Buddy · Teammate C Harness</title>
+</head>
+<body class="harness-body">
+  <main class="app-shell">
+    <header class="app-header"><div><span class="app-kicker">Standalone C test harness</span><strong>Networking Buddy</strong></div><span class="connection-dot">● Mock</span></header>
+    <div id="c-status" class="harness-status" role="status" hidden></div>
+    <section id="screen-home" class="screen harness-home">
+      <div class="hero-copy"><span class="eyebrow">Your daily connection plan</span><h1>Go meet someone. Keep the streak alive.</h1><p>The games are optional practice. The real progress happens when you reach out, show up, and remember what someone shared.</p></div>
+      <div id="daily-tasks"></div>
+      <div class="harness-card practice-section"><div class="practice-heading"><div><p class="eyebrow">Optional practice</p><h2>Warm up your networking skills</h2><p>Earn a little XP, then take it into the real world.</p></div><span class="practice-badge">Side quest</span></div><div class="game-picker"><button class="game-tile" data-game="elevator_pitch"><span>01 · 10 XP</span><strong>Elevator Pitch</strong><small>One clear introduction</small></button><button class="game-tile" data-game="coffee_chat"><span>02 · 15 XP</span><strong>Coffee Chat</strong><small>Build curiosity and rapport</small></button><button class="game-tile" data-game="follow_up"><span>03 · 10 XP</span><strong>Follow-Up</strong><small>Give them a reason to reply</small></button><button class="game-tile" data-game="cold_call"><span>04 · 20 XP</span><strong>Cold Outreach</strong><small>Make a small, clear ask</small></button></div></div>
+      <div class="harness-actions"><button class="button button-secondary" data-error>Enable mock errors</button><button class="button button-secondary" data-reset>Reset mock state</button></div>
+    </section>
+    <section id="screen-game" class="screen" hidden></section>
+    <section id="screen-score" class="screen" hidden></section>
+    <section id="screen-task" class="screen" hidden></section>
+    <button class="harness-back" data-back>← Back to test harness home</button>
+  </main>
+  <script src="./mock-api_C.js"></script><script src="../game_C.js"></script><script src="../tasks_C.js"></script><script src="./c-harness_C.js"></script>
+</body>
+</html>
