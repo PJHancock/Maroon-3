@@ -28,6 +28,8 @@ class Settings:
     api_key: str = ""
     model: str = "claude-sonnet-5-5"
     llm_timeout: float = 20.0
+    research_timeout: float = 120.0
+    research_effort: str = "medium"
     timezone: str = "America/Denver"
     allow_reset: bool = True
     cors_origins: tuple[str, ...] = ()
@@ -36,6 +38,10 @@ class Settings:
         ZoneInfo(self.timezone)  # Fail at startup, not during an XP action.
         if self.llm_timeout <= 0:
             raise ValueError("LLM_TIMEOUT_SECONDS must be positive")
+        if self.research_timeout <= 0:
+            raise ValueError("RESEARCH_TIMEOUT_SECONDS must be positive")
+        if self.research_effort not in {"low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("RESEARCH_EFFORT must be low, medium, high, xhigh, or max")
         if not self.demo_mode and not self.api_key:
             raise ValueError("Set ANTHROPIC_API_KEY or enable DEMO_MODE=1")
         if self.db_path.resolve() == self.seed_path.resolve():
@@ -59,6 +65,8 @@ def get_settings() -> Settings:
         api_key=api_key,
         model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "20")),
+        research_timeout=float(os.getenv("RESEARCH_TIMEOUT_SECONDS", "120")),
+        research_effort=os.getenv("RESEARCH_EFFORT", "medium").strip().lower(),
         timezone=os.getenv("APP_TIMEZONE", "America/Denver"),
         allow_reset=env_bool("ALLOW_RESET", True),
         cors_origins=tuple(x.strip() for x in os.getenv("CORS_ORIGINS", "").split(",") if x.strip()),

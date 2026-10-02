@@ -389,7 +389,7 @@ class FakeTransport:
 
 
 class FakeWebTransport(FakeTransport):
-    async def complete_with_web_search(self, system, messages, max_tokens, *, location=""):
+    async def complete_with_web_search(self, system, messages, max_tokens, *, location="", timeout=None, effort="medium"):
         self.calls.append((system, messages, max_tokens, location))
         response = self.responses.pop(0)
         if isinstance(response, Exception):
@@ -484,6 +484,77 @@ class ClaudeBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.source, "live")
         self.assertEqual(result.value.candidates[0].title, "Public data engineering community")
         self.assertEqual(transport.calls[0][3], "Provo, UT")
+
+
+class FakeMessages:
+    """Stands in for client.messages; returns canned responses in order."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    async def create(self, **kwargs):
+        self.requests.append(kwargs)
+        return self.responses.pop(0)
+
+
+def web_transport(responses):
+    from types import SimpleNamespace
+    from backend.llm import ClaudeTransport
+
+    transport = object.__new__(ClaudeTransport)  # skip constructing the real SDK client
+    messages = FakeMessages(responses)
+    client = SimpleNamespace(messages=messages)
+    client.with_options = lambda **_: client
+    transport.client, transport.model, transport.api_error = client, "claude-sonnet-5-5", RuntimeError
+    return transport, messages
+
+
+def reply(stop_reason, *blocks):
+    from types import SimpleNamespace
+    return SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(**b) for b in blocks])
+
+
+class WebSearchTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resumes_pause_turn_and_returns_only_the_final_answer(self):
+        transport, fake = web_transport([
+            reply("pause_turn", {"type": "text", "text": "Let me search."},
+                  {"type": "server_tool_use"}),
+            reply("end_turn", {"type": "web_search_tool_result"},
+                  {"type": "text", "text": '{"profile_summary": "Near '},
+                  {"type": "text", "text": 'Provo", "candidates": []}'}),
+        ])
+        text = await transport.complete_with_web_search("sys", [{"role": "user", "content": "go"}], 16000,
+                                                        location="Provo, UT", timeout=90)
+        self.assertEqual(json.loads(text), {"profile_summary": "Near Provo", "candidates": []})
+        self.assertEqual(len(fake.requests), 2)
+        resumed = fake.requests[1]["messages"]
+        self.assertEqual(resumed[-1]["role"], "assistant", "the paused turn is sent back to resume")
+        tool = fake.requests[0]["tools"][0]
+        self.assertEqual(tool["type"], "web_search_20260209")
+        self.assertGreater(tool["max_uses"], 4, "cap leaves headroom above the prompt's 4 searches")
+        self.assertEqual(fake.requests[0]["output_config"], {"effort": "medium"})
+        self.assertEqual(tool["user_location"]["city"], "Provo")
+        self.assertEqual(tool["user_location"]["region"], "UT")
+
+    async def test_omits_unknown_location_fields(self):
+        transport, fake = web_transport([reply("end_turn", {"type": "text", "text": "{}"})])
+        await transport.complete_with_web_search("sys", [], 16000, location="")
+        location = fake.requests[0]["tools"][0]["user_location"]
+        self.assertNotIn("city", location)
+        self.assertNotIn("region", location)
+
+    async def test_truncated_or_refused_answers_fail_instead_of_parsing_partial_json(self):
+        for stop in ("max_tokens", "refusal"):
+            transport, _ = web_transport([reply(stop, {"type": "text", "text": '{"profile_summary": "cut'})])
+            with self.assertRaises(ProviderFailure):
+                await transport.complete_with_web_search("sys", [], 16000)
+
+    async def test_gives_up_after_repeated_pauses(self):
+        transport, fake = web_transport([reply("pause_turn", {"type": "server_tool_use"})] * 4)
+        with self.assertRaises(ProviderFailure):
+            await transport.complete_with_web_search("sys", [], 16000)
+        self.assertEqual(len(fake.requests), 4)
 
 
 if __name__ == "__main__":

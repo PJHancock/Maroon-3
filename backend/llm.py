@@ -59,30 +59,42 @@ class ClaudeTransport:
         return text
 
     async def complete_with_web_search(self, system: str, messages: list[dict],
-                                       max_tokens: int, *, location: str = "") -> str:
+                                       max_tokens: int, *, location: str = "",
+                                       timeout: float | None = None, effort: str = "medium") -> str:
         """Use Anthropic's hosted web-search tool; no second search API key is needed."""
+        user_location = {"type": "approximate", "country": "US", "timezone": "America/Denver"}
+        city, _, region = (part.strip() for part in location.partition(","))
+        if city:
+            user_location["city"] = city
+        if region:
+            user_location["region"] = region
+        # The prompt asks for at most 4 searches; the cap leaves headroom because
+        # hitting it returns an error that can make Claude abandon good results.
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 8,
+                  "user_location": user_location}]
+        client = self.client.with_options(timeout=timeout) if timeout else self.client
+        messages = list(messages)
         try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                tools=[{
-                    "type": "web_search_20250305",
-                    "name": "web_search",
-                    "max_uses": 3,
-                    "user_location": {
-                        "type": "approximate",
-                        "city": location.split(",", 1)[0].strip() if location else None,
-                        "region": location.split(",", 1)[1].strip() if "," in location else None,
-                        "country": "US",
-                        "timezone": "America/Denver",
-                    },
-                }],
-            )
+            # Searches run server-side; a long turn can come back as pause_turn,
+            # which is resumed by sending the partial assistant turn back.
+            for _ in range(4):
+                response = await client.messages.create(
+                    model=self.model, max_tokens=max_tokens, system=system,
+                    messages=messages, tools=tools, output_config={"effort": effort},
+                )
+                if response.stop_reason != "pause_turn":
+                    break
+                messages = [*messages, {"role": "assistant", "content": response.content}]
+            else:
+                raise ProviderFailure("Web research kept pausing")
         except self.api_error as exc:
             raise ProviderFailure(type(exc).__name__) from exc
-        text = "\n".join(block.text for block in response.content if block.type == "text").strip()
+        if response.stop_reason in {"max_tokens", "refusal", "pause_turn"}:
+            raise ProviderFailure(f"Web research stopped early ({response.stop_reason})")
+        # The answer is the text after the last search. Citations split it into
+        # several text blocks, so join without separators to keep the JSON intact.
+        last_tool = max((i for i, block in enumerate(response.content) if block.type != "text"), default=-1)
+        text = "".join(block.text for block in response.content[last_tool + 1:] if block.type == "text").strip()
         if not text:
             raise ProviderFailure("Empty web research response")
         return text
@@ -129,9 +141,13 @@ def validate_reminders(payload: ReminderPayload, context: dict) -> None:
 
 
 class ClaudeAI:
-    def __init__(self, transport: TextTransport, timeout: float = 20):
+    def __init__(self, transport: TextTransport, timeout: float = 20, research_timeout: float = 120,
+                 research_effort: str = "medium"):
         self.transport = transport
         self.timeout = timeout
+        # Web research runs several searches, so it gets its own, longer budget.
+        self.research_timeout = research_timeout
+        self.research_effort = research_effort
         self.fallback = DemoAI()
 
     async def _text(self, system: str, messages: list[dict], fallback: str,
@@ -250,15 +266,18 @@ class ClaudeAI:
         if complete is None:
             return AIResult(fallback, "fallback")
         try:
-            async with asyncio.timeout(self.timeout):
+            async with asyncio.timeout(self.research_timeout):
                 text = await complete(
                     prompts.research_prompt(context),
                     [{"role": "user", "content": "Search now and return the requested JSON."}],
-                    1800,
+                    # Room for thinking plus up to 9 candidates; too little truncates the JSON.
+                    16000,
                     location=(context.get("student") or {}).get("location", ""),
+                    timeout=self.research_timeout,
+                    effort=self.research_effort,
                 )
                 payload = ResearchPayload.model_validate(parse_json(text))
                 return AIResult(payload, "live")
         except (ProviderFailure, TimeoutError, ValueError, ValidationError) as exc:
-            logger.warning("Using offline research fallback (%s)", type(exc).__name__)
+            logger.warning("Using offline research fallback (%s: %s)", type(exc).__name__, exc)
             return AIResult(fallback, "fallback")

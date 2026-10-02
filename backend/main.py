@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None, *, repository=None, ai=None, to
             engine = DemoAI()
         else:
             transport = ClaudeTransport(settings.api_key, settings.model, settings.llm_timeout)
-            engine = ClaudeAI(transport, settings.llm_timeout)
+            engine = ClaudeAI(transport, settings.llm_timeout, settings.research_timeout, settings.research_effort)
         app.state.settings = settings
         app.state.buddy = BuddyService(store, engine, today or app_today, settings.demo_mode)
         try:

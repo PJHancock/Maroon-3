@@ -83,6 +83,13 @@ def research_prompt(context: dict) -> str:
 Use the web_search tool before answering. Find current, public opportunities
 that can help this specific student build professional connections.
 
+Run at most 4 focused searches in total (for example: local meetups for the
+target role, the student's school events and career fairs, regional
+conferences). If a search returns an error or nothing useful, keep going with
+the results you already have; never discard real results because one search
+failed. Prefer pages that list specific dates, such as Meetup, Eventbrite,
+university calendars, and conference sites.
+
 Return up to 5 events and up to 4 people/community paths. Events must be
 actually scheduled within the supplied 90-day window and in or reasonably near
 the student's location. People paths may be public LinkedIn searches, public
