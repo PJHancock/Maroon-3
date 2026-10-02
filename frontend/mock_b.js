@@ -283,6 +283,13 @@ function route(method, path, body) {
       searched_at: today(), window_ends: "2026-12-31", source: "demo",
     };
   }
+  if (method === "GET" && p === "/api/radar") {
+    const saved = new Set(db.radar_ids ?? []);
+    const items = MOCK_OPPORTUNITIES.filter((x) => saved.has(x.id))
+      .map(({ on_radar, ...item }) => ({ ...structuredClone(item), saved_at: today() }))
+      .sort((a, b) => (a.kind !== "event") - (b.kind !== "event") || String(a.starts_at ?? "9999").localeCompare(String(b.starts_at ?? "9999")));
+    return { items, today: today(), unavailable: 0 };
+  }
   if (method === "POST" && (m = p.match(/^\/api\/opportunities\/([^/]+)\/radar$/))) {
     const item = MOCK_OPPORTUNITIES.find((x) => x.id === m[1]);
     if (!item) throw Object.assign(new Error("Research opportunity not found"), { status: 404 });

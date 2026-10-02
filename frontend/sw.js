@@ -1,4 +1,5 @@
-const CACHE_NAME = "networking-buddy-shell-v3";
+// Bump the version when APP_SHELL changes so old caches are dropped.
+const CACHE_NAME = "networking-buddy-shell-v4";
 const APP_SHELL = [
   "/",
   "/styles_b.css",
@@ -6,6 +7,7 @@ const APP_SHELL = [
   "/app_b.js",
   "/home_b.js",
   "/contacts_b.js",
+  "/radar.js",
   "/notifications.js",
   "/game_C.js",
   "/tasks_C.js",
@@ -13,7 +15,11 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  // Cache files one at a time: addAll() rejects if any file is missing, which
+  // would stop this worker from installing and leave the old one serving stale code.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => Promise.all(
+    APP_SHELL.map((path) => cache.add(path).catch(() => console.warn(`sw: couldn't cache ${path}`))),
+  )));
   self.skipWaiting();
 });
 
@@ -44,11 +50,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network first so code changes reach the browser; the cache is only an offline fallback.
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-      return response;
-    })),
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request)),
   );
 });

@@ -160,8 +160,20 @@ export function renderSuggestionSheet(reminder, suggestions) {
   return `<h2>Suggestions for ${esc(name)}</h2>${reminder?.reason ? `<p class="muted">${esc(reminder.reason)}</p>` : ""}<p>You could ask about:</p><ul class="suggestion-list">${(Array.isArray(suggestions) ? suggestions : []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul><div class="sheet-actions"><button class="btn" data-action="reached-out">I reached out ✓</button><button class="btn btn-ghost" data-action="close-sheet">Close</button></div>`;
 }
 
-function opportunityDate(item) {
-  if (!item?.starts_at) return ""
+// "2026-11-09" (no time) means a whole day. new Date() would read it as UTC
+// midnight, which shows as the previous afternoon in US time zones.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function localDate(value) {
+  const [y, m, d] = String(value).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export function opportunityDate(item) {
+  if (!item?.starts_at) return "";
+  if (DATE_ONLY.test(item.starts_at)) {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(localDate(item.starts_at));
+  }
   const date = new Date(item.starts_at);
   if (Number.isNaN(date.getTime())) return String(item.starts_at).slice(0, 10);
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -174,14 +186,25 @@ export function eventToICS(item) {
     if (Number.isNaN(parsed.getTime())) return "";
     return parsed.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   };
-  const start = toICSDate(item.starts_at);
-  const end = toICSDate(item.ends_at) || toICSDate(new Date(new Date(item.starts_at).getTime() + 3600000));
-  if (!start || !end) return "";
+  let dates;
+  if (DATE_ONLY.test(item.starts_at)) {
+    // All-day event: DTEND is the (exclusive) day after the last day.
+    const day = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    const first = localDate(item.starts_at);
+    const last = DATE_ONLY.test(item.ends_at ?? "") ? localDate(item.ends_at) : first;
+    const after = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+    dates = [`DTSTART;VALUE=DATE:${day(first)}`, `DTEND;VALUE=DATE:${day(after)}`];
+  } else {
+    const start = toICSDate(item.starts_at);
+    const end = toICSDate(item.ends_at) || toICSDate(new Date(new Date(item.starts_at).getTime() + 3600000));
+    if (!start || !end) return "";
+    dates = [`DTSTART:${start}`, `DTEND:${end}`];
+  }
   const fold = (value) => String(value ?? "").replace(/[\\;,\n]/g, (c) => `\\${c}`);
   return [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Networking Buddy//EN", "BEGIN:VEVENT",
     `UID:${item.id}@networking-buddy`, `DTSTAMP:${toICSDate(new Date())}`,
-    `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${fold(item.title)}`,
+    ...dates, `SUMMARY:${fold(item.title)}`,
     `DESCRIPTION:${fold(item.summary)}\\n\\n${fold(item.why_it_fits)}`,
     `LOCATION:${fold(item.location)}`, `URL:${item.action_url}`, "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
@@ -199,7 +222,7 @@ export function renderResearchPanel(response) {
   return `<div class="research-summary"><p>${esc(response.profile_summary ?? "Research matched to your profile.")}</p><small>Research checked ${esc(response.searched_at ?? "today")} · through ${esc(response.window_ends ?? "the next 90 days")}</small></div>
     <div class="research-list">${opportunities.map((item) => `
       <article class="card research-card">
-        <div class="research-card-head"><span class="eyebrow">${item.kind === "event" ? "Upcoming event" : "People to explore"}</span>${item.on_radar ? `<span class="radar-badge">On radar</span>` : ""}</div>
+        <div class="research-card-head"><span class="eyebrow">${item.kind === "event" ? "Upcoming event" : "People to explore"}</span>${item.on_radar ? `<span class="radar-badge">On Radar</span>` : ""}</div>
         <h3>${esc(item.title)}</h3>
         ${item.starts_at ? `<p class="research-date">📅 ${esc(opportunityDate(item))}</p>` : ""}
         ${item.location ? `<p class="research-location">📍 ${esc(item.location)}</p>` : ""}
@@ -208,7 +231,7 @@ export function renderResearchPanel(response) {
         <div class="research-actions">
           <a class="btn btn-small" href="${esc(item.action_url)}" target="_blank" rel="noopener">${item.kind === "event" ? "Details / RSVP" : "Explore people"}</a>
           ${item.kind === "event" && item.starts_at ? `<a class="btn btn-small btn-ghost" href="data:text/calendar;charset=utf-8,${encodeURIComponent(eventToICS(item))}" download="${esc(item.id)}.ics">Add to calendar</a>` : ""}
-          <button class="btn btn-small btn-ghost" data-action="${item.on_radar ? "remove-radar" : "save-radar"}" data-opportunity-id="${esc(item.id)}">${item.on_radar ? "Remove radar" : "Save to radar"}</button>
+          <button class="btn btn-small btn-ghost" data-action="${item.on_radar ? "remove-radar" : "save-radar"}" data-opportunity-id="${esc(item.id)}">${item.on_radar ? "Remove from Radar" : "Save to Radar"}</button>
         </div>
       </article>`).join("")}</div>`;
 }
@@ -418,8 +441,8 @@ registerScreen("home", {
         radar.disabled = true;
         api(`/api/opportunities/${encodeURIComponent(radar.dataset.opportunityId)}/radar`, { method: saved ? "POST" : "DELETE" })
           .then(() => showOpportunities(el))
-          .then(() => toast(saved ? "Saved to your radar" : "Removed from your radar"))
-          .catch((err) => { radar.disabled = false; toast(`Couldn't update radar: ${err.message}`); });
+          .then(() => toast(saved ? "Saved to your Radar" : "Removed from your Radar"))
+          .catch((err) => { radar.disabled = false; toast(`Couldn't update Radar: ${err.message}`); });
       }
       const dbg = e.target.closest("[data-debug-xp]");
       if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));

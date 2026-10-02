@@ -14,7 +14,8 @@ from .games import GAME_CONFIGS, GameConfig, get_game
 from .llm import NetworkingAI, validate_reminders, validate_rubric
 from .models import (
     ActiveSession, Contact, ContactCreate, ContactUpdate, Database, DraftRequest,
-    DraftResponse, GameSession, HistoryRequest, OnboardingRequest, RadarResponse,
+    DraftResponse, GameSession, HistoryRequest, OnboardingRequest, RadarEntry, RadarItem,
+    RadarListResponse, RadarResponse, ResearchCandidate,
     RemindersResponse, ResearchResponse, ScoreResponse, StartResponse,
     StateResponse, SuggestionsResponse, Task, TaskAcceptRequest, TaskComplete,
     TaskContext, TaskGuidance, TaskPrepResponse, TaskProposalResponse, TaskResponse,
@@ -554,16 +555,20 @@ class BuddyService:
         return response
 
     async def set_radar(self, identifier: str, saved: bool) -> RadarResponse:
+        snapshot = None
         if saved:
             results = await self.opportunities()
-            if not any(item.id == identifier for item in results.opportunities):
+            found = next((item for item in results.opportunities if item.id == identifier), None)
+            if found is None:
                 raise DomainError("Research opportunity not found; refresh recommendations", "opportunity_not_found", 404)
+            snapshot = ResearchCandidate(**found.model_dump(exclude={"id", "on_radar"}))
 
         def commit(database: Database):
             existing = next((entry for entry in database.radar if entry.opportunity_id == identifier), None)
             if saved and existing is None:
-                from .models import RadarEntry
-                database.radar.append(RadarEntry(opportunity_id=identifier, saved_at=self.today()))
+                database.radar.append(RadarEntry(opportunity_id=identifier, saved_at=self.today(), opportunity=snapshot))
+            elif saved and existing.opportunity is None:
+                existing.opportunity = snapshot  # backfill entries saved before snapshots existed
             elif not saved and existing is not None:
                 database.radar.remove(existing)
             return RadarResponse(
@@ -574,3 +579,14 @@ class BuddyService:
 
         result = self.repository.update(commit)
         return result
+
+    def radar(self) -> RadarListResponse:
+        """Saved opportunities: events by start date, then people and communities."""
+        database = self.repository.load_db()
+        items = [
+            RadarItem(**entry.opportunity.model_dump(), id=entry.opportunity_id, saved_at=entry.saved_at)
+            for entry in database.radar if entry.opportunity is not None
+        ]
+        items.sort(key=lambda item: (item.kind != "event", item.starts_at or "9999", item.title.casefold()))
+        unavailable = sum(1 for entry in database.radar if entry.opportunity is None)
+        return RadarListResponse(items=items, today=self.today(), unavailable=unavailable)

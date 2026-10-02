@@ -279,7 +279,8 @@ button.card:active, a.card:active { transform: translateY(2px); box-shadow: 0 1p
 .research-fit { padding: 8px 10px; border-radius: 10px; color: var(--ink); background: #eef8ff; }
 .radar-badge { border-radius: 99px; padding: 4px 8px; color: #855b00; background: #fff2bf; font-size: 11px; font-weight: 900; }
 .research-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.research-actions .btn { flex: 1; min-width: 125px; text-align: center; font-size: 11px; padding: 9px 10px; }
+/* Buttons in a row stretch to the tallest one; flex-centering keeps every label in the middle. */
+.research-actions .btn { flex: 1; min-width: 125px; display: inline-flex; align-items: center; justify-content: center; text-align: center; font-size: 11px; padding: 9px 10px; }
 .research-empty { padding: 16px; border: 2px dashed var(--line); border-radius: var(--radius); }
 .research-empty p { margin-top: 0; font-size: 13px; }
 

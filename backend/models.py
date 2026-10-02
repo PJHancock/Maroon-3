@@ -167,9 +167,26 @@ class ActiveSession(Contract):
     date: date
 
 
+class ResearchCandidate(Contract):
+    kind: Literal["event", "person"]
+    title: ShortText
+    summary: NoteText
+    why_it_fits: NoteText
+    source_name: ShortText
+    source_url: UrlText
+    action_url: UrlText
+    starts_at: str | None = Field(default=None, max_length=80)
+    ends_at: str | None = Field(default=None, max_length=80)
+    location: OptionalText = ""
+    tags: list[ShortText] = Field(default_factory=list, max_length=10)
+
+
 class RadarEntry(Contract):
     opportunity_id: ShortText
     saved_at: date
+    # A copy of what was saved, so the Radar list survives restarts and new
+    # searches. Entries saved before this field existed have none.
+    opportunity: ResearchCandidate | None = None
 
 
 class Database(Contract):
@@ -203,20 +220,6 @@ class StateResponse(Contract):
     radar_ids: list[str] = Field(default_factory=list)
 
 
-class ResearchCandidate(Contract):
-    kind: Literal["event", "person"]
-    title: ShortText
-    summary: NoteText
-    why_it_fits: NoteText
-    source_name: ShortText
-    source_url: UrlText
-    action_url: UrlText
-    starts_at: str | None = Field(default=None, max_length=80)
-    ends_at: str | None = Field(default=None, max_length=80)
-    location: OptionalText = ""
-    tags: list[ShortText] = Field(default_factory=list, max_length=10)
-
-
 class ResearchPayload(Contract):
     profile_summary: NoteText
     candidates: list[ResearchCandidate] = Field(default_factory=list, max_length=12)
@@ -225,6 +228,18 @@ class ResearchPayload(Contract):
 class ResearchOpportunity(ResearchCandidate):
     id: ShortText
     on_radar: bool = False
+
+
+class RadarItem(ResearchCandidate):
+    id: ShortText
+    saved_at: date
+
+
+class RadarListResponse(Contract):
+    items: list[RadarItem] = Field(default_factory=list)
+    today: date
+    # Saved before details were stored; shown as a count so they aren't silently lost.
+    unavailable: int = 0
 
 
 class ResearchResponse(Contract):

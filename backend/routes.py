@@ -6,7 +6,7 @@ from .errors import DomainError
 from .models import (
     Contact, ContactCreate, ContactUpdate, DraftRequest, DraftResponse,
     HistoryRequest, OnboardingRequest, RadarResponse, RemindersResponse,
-    ResearchResponse, ScoreResponse, StartResponse, StateResponse, SuggestionsResponse,
+    RadarListResponse, ResearchResponse, ScoreResponse, StartResponse, StateResponse, SuggestionsResponse,
     Task, TaskAcceptRequest, TaskComplete, TaskContext, TaskPrepResponse,
     TaskProposalResponse, TaskResponse, TurnResponse,
 )
@@ -82,6 +82,11 @@ def delete_contact(id: str, service: BuddyService = Depends(get_service)):
 @router.get("/opportunities", response_model=ResearchResponse, tags=["Research"])
 async def opportunities(refresh: bool = False, service: BuddyService = Depends(get_service)):
     return await service.opportunities(refresh=refresh)
+
+
+@router.get("/radar", response_model=RadarListResponse, tags=["Research"])
+def radar(service: BuddyService = Depends(get_service)):
+    return service.radar()
 
 
 @router.post("/opportunities/{id}/radar", response_model=RadarResponse, tags=["Research"])

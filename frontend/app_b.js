@@ -147,7 +147,7 @@ export function _setState(s) {
 
 // ---------- router ----------
 
-export const SCREENS = ["home", "contacts", "notifications", "game", "score", "task"];
+export const SCREENS = ["home", "contacts", "radar", "notifications", "game", "score", "task"];
 
 const screens = {};
 let started = false;

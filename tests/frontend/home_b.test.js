@@ -233,7 +233,7 @@ test("research panel distinguishes live results from demo mode", () => {
     opportunities: [{ id: "r1", kind: "person", title: "Public data community", summary: "A public path", why_it_fits: "Relevant", source_name: "Community", source_url: "https://example.com/source", action_url: "https://example.com/action", on_radar: false }],
   });
   assert.match(html, /Public data community/);
-  assert.match(html, /Save to radar/);
+  assert.match(html, /Save to Radar/);
 });
 
 test("loadReminders caches until forced", async () => {

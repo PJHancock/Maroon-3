@@ -344,6 +344,50 @@ class Fixture(unittest.IsolatedAsyncioTestCase):
         removed = await self.service.set_radar(response.opportunities[0].id, False)
         self.assertFalse(removed.saved)
 
+    async def test_radar_list_keeps_saved_details_across_restarts(self):
+        def candidate(title, kind="event", starts_at=None):
+            return ResearchCandidate(
+                kind=kind, title=title, summary="S.", why_it_fits="Fits.", source_name="Src",
+                source_url=f"https://example.com/{title}", action_url=f"https://example.com/{title}/rsvp",
+                starts_at=starts_at, location="Provo, UT",
+            )
+
+        class ResearchAI(DemoAI):
+            async def research(self, context):
+                return type("Result", (), {"source": "live", "value": ResearchPayload(
+                    profile_summary="Matches.", candidates=[
+                        candidate("Later meetup", starts_at="2026-11-05T18:00:00-07:00"),
+                        candidate("Data club", kind="person"),
+                        candidate("Sooner meetup", starts_at="2026-10-20T18:00:00-06:00"),
+                    ])})()
+
+        self.service.ai = ResearchAI()
+        found = {item.title: item.id for item in (await self.service.opportunities(refresh=True)).opportunities}
+        for title in found:
+            await self.service.set_radar(found[title], True)
+
+        # A new service has an empty research cache, like after a server restart.
+        restarted = BuddyService(self.repo, DemoAI(), lambda: TODAY, True)
+        radar = restarted.radar()
+        self.assertEqual([item.title for item in radar.items], ["Sooner meetup", "Later meetup", "Data club"])
+        self.assertEqual(radar.items[0].action_url, "https://example.com/Sooner meetup/rsvp")
+        self.assertEqual(radar.items[0].saved_at, TODAY)
+        self.assertEqual(radar.unavailable, 0)
+        self.assertEqual(radar.today, TODAY)
+
+        await restarted.set_radar(found["Later meetup"], False)
+        self.assertNotIn("Later meetup", [item.title for item in restarted.radar().items])
+
+        # Entries saved before snapshots existed are counted, then backfilled when saved again.
+        def strip(db):
+            for entry in db.radar:
+                entry.opportunity = None
+        self.repo.update(strip)
+        self.assertEqual(self.service.radar().unavailable, 2)
+        await self.service.set_radar(found["Data club"], True)
+        self.assertEqual([item.title for item in self.service.radar().items], ["Data club"])
+        self.assertEqual(self.service.radar().unavailable, 1)
+
     async def test_maximum_length_contact_notes_keep_fallback_usable(self):
         self.repo.update(lambda db: db.contacts.clear())
         contact = self.service.add_contact(ContactCreate(name="M" * 200, notes=["detail " * 285]))
