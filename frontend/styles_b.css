@@ -144,6 +144,16 @@ button.card:active, a.card:active { transform: translateY(2px); box-shadow: 0 1p
 
 /* ---------- contacts ---------- */
 
+.search {
+  width: 100%; font: inherit; font-size: 16px; margin-bottom: 14px;
+  padding: 12px 14px 12px 40px; border: 2px solid var(--line); border-radius: 999px;
+  background: #f7f7f7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='m13 13 4 4'/%3E%3C/svg%3E") no-repeat 14px center;
+}
+.search:focus { outline: none; border-color: var(--blue); background-color: #fff; }
+
+.contact-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; }
+.contact-links a { color: var(--blue); font-weight: 800; font-size: 14px; word-break: break-all; }
+
 .notes { margin: 8px 0; padding-left: 20px; }
 .notes li { margin: 2px 0; }
 .when { color: var(--muted); font-size: 13px; }
@@ -156,6 +166,12 @@ button.card:active, a.card:active { transform: translateY(2px); box-shadow: 0 1p
 }
 .field input:focus, .field textarea:focus, .draft-text:focus { outline: none; border-color: var(--blue); background: #fff; }
 .field-error { display: block; color: var(--danger); font-style: normal; font-size: 13px; margin-top: 4px; }
+
+/* ---------- debug panel (?debug=1) ---------- */
+
+.debug-panel { border: 2px dashed var(--flame); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 16px; background: #fff7e6; }
+.debug-panel small { color: var(--muted); }
+.debug-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
 /* ---------- bottom tab bar ---------- */
 
