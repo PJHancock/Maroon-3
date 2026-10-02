@@ -161,6 +161,56 @@ class DemoAI:
             body = f'I made a note from our conversation: "{hook}". What would be a useful small next step to learn more about that?'
         return AIResult(f"Hi {name}, {body} — {student}", "demo")
 
+    async def suggest(self, context: dict) -> AIResult[list[str]]:
+        contact = context["contact"]
+        name = contact["name"].split()[0]
+        notes = " ".join(contact["notes"]).casefold()
+        if "dbt" in notes:
+            suggestions = [f"Ask {name} what the biggest challenge in their dbt migration has been", "Ask what kind of dbt tests they've found most valuable"]
+        elif "grant" in notes:
+            suggestions = [f"Ask {name} how the grant submission went", "Ask if there's a way you could help with the lab website"]
+        else:
+            hook = (contact["notes"][-1] if contact["notes"] else "their work")[:100]
+            suggestions = [f"Ask {name} more about {hook.lower()}", f"Ask what {name} is working on this week"]
+        role = (context["user"].get("target_roles") or ["your field"])[0]
+        suggestions.append(f"Ask how their experience connects to {role}")
+        return AIResult(suggestions[:3], "demo")
+
+    async def propose_tasks(self, context: dict) -> AIResult[list[dict]]:
+        user = context["user"]
+        contacts = context.get("contacts", [])
+        roles = user.get("target_roles", ["your target role"])
+        role = roles[0] if roles else "your target role"
+        tasks = [{
+            "title": "Reach out to one new person this week",
+            "description": f"Find someone working in {role} and send a specific, low-pressure question.",
+            "type": "online_outreach", "difficulty": "easy", "xp": 35,
+            "frequency": "weekly", "skill": "outreach",
+        }]
+        for contact in contacts[:2]:
+            if contact.get("notes"):
+                tasks.append({
+                    "title": f"Follow up with {contact['name']}",
+                    "description": f"Reconnect about: {contact['notes'][-1][:120]}",
+                    "type": "follow_up", "difficulty": "easy", "xp": 40,
+                    "frequency": "once", "skill": "follow up", "contact_id": contact["id"],
+                })
+        averages = context.get("score_averages", {})
+        if averages:
+            weak = min(averages, key=averages.get)
+            if averages[weak] < 3:
+                tasks.append({
+                    "title": f"Practice {weak.replace('_', ' ')} in a conversation",
+                    "description": f"Your {weak.replace('_', ' ')} scores are low. Focus on this in your next interaction.",
+                    "type": "personal_chat", "difficulty": "medium", "xp": 45,
+                    "frequency": "weekly", "skill": weak.replace("_", " "),
+                })
+        tasks.extend([
+            {"title": "Attend a networking event or meetup", "description": f"Find a {role}-related event and talk to at least one person there.", "type": "event", "difficulty": "hard", "xp": 80, "frequency": "once", "skill": "events"},
+            {"title": "Schedule an informational interview", "description": "Invite someone in your target field to a 15-minute conversation about their work.", "type": "personal_chat", "difficulty": "medium", "xp": 60, "frequency": "once", "skill": "informational interview"},
+        ])
+        return AIResult(tasks[:5], "demo")
+
     async def research(self, context: dict) -> AIResult[ResearchPayload]:
         student = context.get("student", {})
         roles = ", ".join(student.get("target_roles") or ["the role you want"])

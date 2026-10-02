@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, Request
 from .errors import DomainError
 from .models import (
     Contact, ContactCreate, ContactUpdate, DraftRequest, DraftResponse,
-    HistoryRequest, RadarResponse, RemindersResponse, ResearchResponse,
-    ScoreResponse, StartResponse, StateResponse, TaskComplete, TaskContext,
-    Task, TaskPrepResponse, TaskResponse, TurnResponse,
+    HistoryRequest, OnboardingRequest, RadarResponse, RemindersResponse,
+    ResearchResponse, ScoreResponse, StartResponse, StateResponse, SuggestionsResponse,
+    Task, TaskAcceptRequest, TaskComplete, TaskContext, TaskPrepResponse,
+    TaskProposalResponse, TaskResponse, TurnResponse,
 )
 from .services import BuddyService
 
@@ -101,6 +102,31 @@ async def reminders(service: BuddyService = Depends(get_service)):
 @router.post("/coach/draft", response_model=DraftResponse, tags=["Coach"])
 async def draft(body: DraftRequest, service: BuddyService = Depends(get_service)):
     return await service.draft(body)
+
+
+@router.post("/coach/suggest", response_model=SuggestionsResponse, tags=["Coach"])
+async def suggest(body: DraftRequest, service: BuddyService = Depends(get_service)):
+    return await service.suggest(body)
+
+
+@router.post("/coach/propose-tasks", response_model=TaskProposalResponse, tags=["Coach"])
+async def propose_tasks(service: BuddyService = Depends(get_service)):
+    return await service.propose_tasks()
+
+
+@router.post("/tasks/{id}/accept", response_model=Task, tags=["Tasks"])
+def accept_task(id: str, body: TaskAcceptRequest, service: BuddyService = Depends(get_service)):
+    return service.accept_task(id, body)
+
+
+@router.post("/tasks/{id}/reject", tags=["Tasks"])
+def reject_task(id: str, service: BuddyService = Depends(get_service)):
+    return service.reject_task(id)
+
+
+@router.post("/onboarding", response_model=StateResponse, tags=["Onboarding"])
+def onboarding(body: OnboardingRequest, service: BuddyService = Depends(get_service)):
+    return service.complete_onboarding(body)
 
 
 @router.post("/reset", response_model=StateResponse, tags=["Demo"])

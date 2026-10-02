@@ -14,9 +14,10 @@ from .games import GAME_CONFIGS, GameConfig, get_game
 from .llm import NetworkingAI, validate_reminders, validate_rubric
 from .models import (
     ActiveSession, Contact, ContactCreate, ContactUpdate, Database, DraftRequest,
-    DraftResponse, GameSession, HistoryRequest, RadarResponse, RemindersResponse,
-    ResearchResponse, ScoreResponse, StartResponse, StateResponse, Task,
-    TaskComplete, TaskContext, TaskGuidance, TaskPrepResponse, TaskResponse,
+    DraftResponse, GameSession, HistoryRequest, OnboardingRequest, RadarResponse,
+    RemindersResponse, ResearchResponse, ScoreResponse, StartResponse,
+    StateResponse, SuggestionsResponse, Task, TaskAcceptRequest, TaskComplete,
+    TaskContext, TaskGuidance, TaskPrepResponse, TaskProposalResponse, TaskResponse,
     TurnResponse, User,
 )
 from .research import normalize_candidates, profile_context, research_fingerprint
@@ -155,6 +156,7 @@ class BuddyService:
         return StateResponse(
             user=database.user, contacts=database.contacts,
             tasks=[t for t in database.tasks if t.status == "open"],
+            proposed_tasks=database.proposed_tasks,
             game_sessions=sorted(reversed(database.game_sessions), key=lambda s: s.date, reverse=True)[:20],
             games=[config.public(name) for name, config in GAME_CONFIGS.items()],
             today=self.today(), mode="demo" if self.demo_mode else "live",
@@ -401,6 +403,12 @@ class BuddyService:
                 task.contact_id = contact.id
                 task.reflection = request.model_dump(exclude={"contact_id"})
                 award_xp(database.user, task.xp, self.today())
+                database.tasks.append(Task(
+                    id="t_" + uuid4().hex, title=f"Follow up with {contact.name}",
+                    description=f"Reconnect about: {request.hook[:120]}",
+                    type="follow_up", difficulty="easy", xp=40,
+                    contact_id=contact.id, frequency="once", skill="follow up",
+                ))
             return TaskResponse(contact=contact, task=task, xp=task.xp,
                                 xp_awarded=0 if already else task.xp,
                                 user=database.user, already_completed=already)
@@ -436,6 +444,89 @@ class BuddyService:
                    "today": self.today().isoformat()}
         answer = await self.ai.draft(context)
         return DraftResponse(draft=answer.value, contact_id=contact.id, source=answer.source)
+
+    def complete_onboarding(self, request: OnboardingRequest) -> StateResponse:
+        def commit(database: Database):
+            database.user.onboarding_goal = request.goal
+            role = request.target_role or (database.user.target_roles[0] if database.user.target_roles else "your target role")
+            company = request.target_company or "a company you admire"
+            if request.goal == "job":
+                templates = [
+                    (f"Research the {role} role", f"Find 3 job postings for {role} and note what skills they require.", "online_outreach", "easy", 30, "research"),
+                    (f"Find someone working as a {role}", "Look on LinkedIn or your network for someone in this role to learn from.", "online_outreach", "easy", 35, "outreach"),
+                    ("Schedule an informational interview", "Invite someone in your target role to a 15-minute conversation.", "personal_chat", "medium", 60, "informational interview"),
+                    ("Practice your elevator pitch", f"Prepare a 30-second introduction for a {role} conversation.", "in_person", "easy", 30, "elevator pitch"),
+                ]
+            elif request.goal == "company":
+                templates = [
+                    (f"Research {company}", f"Learn about {company}'s tech stack, culture, and open roles.", "online_outreach", "easy", 30, "research"),
+                    (f"Find someone who works at {company}", f"Look for an employee at {company} whose work interests you.", "online_outreach", "easy", 35, "outreach"),
+                    (f"Reach out to a {company} employee", "Send a specific, low-pressure question about their experience.", "online_outreach", "medium", 50, "outreach"),
+                    (f"Schedule an informational interview at {company}", f"Ask someone at {company} for a 15-minute conversation.", "call", "medium", 60, "informational interview"),
+                ]
+            else:
+                templates = [
+                    ("Introduce yourself to someone new", "Meet one new person at school, work, or an event this week.", "in_person", "easy", 50, "introductions"),
+                    ("Contact someone new every week", "Reach out to one person in your field each week.", "online_outreach", "easy", 35, "outreach"),
+                    ("Attend a campus or community event", "Go to a meetup, info session, or career event and talk to someone.", "event", "hard", 80, "events"),
+                    ("Set up a coffee chat", "Invite a mentor, classmate, or professional to a short conversation.", "personal_chat", "medium", 60, "coffee chat"),
+                ]
+            database.tasks.extend(Task(
+                id="t_" + uuid4().hex, title=title, description=description,
+                type=kind, difficulty=difficulty, xp=xp, skill=skill,
+            ) for title, description, kind, difficulty, xp, skill in templates)
+
+        self.repository.update(commit)
+        return self.state()
+
+    async def suggest(self, request: DraftRequest) -> SuggestionsResponse:
+        database = self.repository.load_db()
+        contact = next((c for c in database.contacts if c.id == request.contact_id), None)
+        if contact is None:
+            raise DomainError("Contact not found", "contact_not_found", 404)
+        context = {"user": database.user.model_dump(mode="json"),
+                   "contact": contact.model_dump(mode="json"), "reason": request.reason,
+                   "today": self.today().isoformat()}
+        answer = await self.ai.suggest(context)
+        return SuggestionsResponse(suggestions=answer.value, contact_id=contact.id, source=answer.source)
+
+    async def propose_tasks(self) -> TaskProposalResponse:
+        database = self.repository.load_db()
+        answer = await self.ai.propose_tasks(self._coach_context(database))
+        tasks = [Task(
+            id="t_" + uuid4().hex, title=item.get("title", "Networking task"),
+            description=item.get("description", ""), type=item.get("type", "online_outreach"),
+            difficulty=item.get("difficulty", "medium"), xp=max(10, min(100, int(item.get("xp", 40)))),
+            frequency=item.get("frequency", "once"), skill=item.get("skill", ""),
+            contact_id=item.get("contact_id"),
+        ) for item in answer.value]
+
+        def commit(database: Database):
+            database.proposed_tasks = tasks
+
+        self.repository.update(commit)
+        return TaskProposalResponse(proposed_tasks=tasks, source=answer.source)
+
+    def accept_task(self, identifier: str, request: TaskAcceptRequest) -> Task:
+        def commit(database: Database):
+            task = next((item for item in database.proposed_tasks if item.id == identifier), None)
+            if task is None:
+                raise DomainError("Proposed task not found", "task_not_found", 404)
+            database.proposed_tasks = [item for item in database.proposed_tasks if item.id != identifier]
+            task.frequency = request.frequency
+            database.tasks.append(task)
+            return task
+
+        return self.repository.update(commit)
+
+    def reject_task(self, identifier: str) -> dict[str, bool]:
+        def commit(database: Database):
+            if not any(item.id == identifier for item in database.proposed_tasks):
+                raise DomainError("Proposed task not found", "task_not_found", 404)
+            database.proposed_tasks = [item for item in database.proposed_tasks if item.id != identifier]
+            return {"ok": True}
+
+        return self.repository.update(commit)
 
     async def opportunities(self, refresh: bool = False) -> ResearchResponse:
         database = self.repository.load_db()

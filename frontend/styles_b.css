@@ -263,3 +263,13 @@ button.card:active, a.card:active { transform: translateY(2px); box-shadow: 0 1p
 .research-actions .btn { flex: 1; min-width: 125px; text-align: center; font-size: 11px; padding: 9px 10px; }
 .research-empty { padding: 16px; border: 2px dashed var(--line); border-radius: var(--radius); }
 .research-empty p { margin-top: 0; font-size: 13px; }
+
+/* ---------- coach suggestions & proposed tasks ---------- */
+
+.suggestion-list { padding-left: 1.25rem; margin: 0.75rem 0; }
+.suggestion-list li { margin-bottom: 0.5rem; line-height: 1.4; }
+.proposal-card { padding: 12px 16px; }
+.proposal-header { display: flex; align-items: flex-start; gap: 8px; }
+.proposal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.frequency-select { min-height: 34px; font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.skill-badge { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 6px; background: var(--brand-soft); color: var(--brand-dark); font-size: 11px; font-weight: 800; vertical-align: middle; }

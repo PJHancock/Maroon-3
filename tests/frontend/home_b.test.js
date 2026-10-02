@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
-  renderDraftSheet, loadReminders, _resetCoachCache, eventToICS, renderResearchPanel,
+  renderDraftSheet, renderSuggestionSheet, renderProposedTasks, loadReminders, _resetCoachCache, eventToICS, renderResearchPanel,
 } from "../../frontend/home_b.js";
 import { setMockMode, normalizeState } from "../../frontend/app_b.js";
 import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
@@ -168,6 +168,22 @@ test("renderDraftSheet escapes the draft inside the textarea", () => {
   assert.match(html, /Message to Sarah/);
   assert.match(html, /&lt;\/textarea&gt;/);
   assert.match(html, /data-action="copy-draft"/);
+});
+
+test("renderSuggestionSheet escapes LLM suggestions", () => {
+  const html = renderSuggestionSheet({ contact: { name: "Sarah" }, reason: "R" }, ["<script>bad</script>"]);
+  assert.match(html, /Suggestions for Sarah/);
+  assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(html, /data-action="reached-out"/);
+});
+
+test("renderProposedTasks includes XP, frequency, and actions", () => {
+  const html = renderProposedTasks([{ id: "p1", title: "Attend a meetup", type: "event", xp: 80, skill: "events", frequency: "weekly" }]);
+  assert.match(html, /Attend a meetup/);
+  assert.match(html, /\+80 XP/);
+  assert.match(html, /value="weekly" selected/);
+  assert.match(html, /data-action="accept-task"/);
+  assert.match(html, /data-action="reject-task"/);
 });
 
 test("research events can be downloaded as calendar files", () => {

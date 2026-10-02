@@ -74,9 +74,24 @@ export function renderCoachCards(reminders, contacts) {
         ${r.reason ? `<p class="coach-reason">${esc(r.reason)}</p>` : ""}
         ${r.suggested_action ? `<p class="coach-action">👉 ${esc(r.suggested_action)}</p>` : ""}
         ${r.tip ? `<p class="coach-tip">💡 ${esc(r.tip)}</p>` : ""}
-        <span class="coach-cta">Draft a message →</span>
+        <span class="coach-cta">Get conversation ideas →</span>
       </button>`;
   }).join("");
+}
+
+export function renderProposedTasks(proposedTasks) {
+  const tasks = Array.isArray(proposedTasks) ? proposedTasks : [];
+  if (!tasks.length) return "";
+  return `<section class="block">
+    <div class="block-head"><h2>Suggested for you</h2><button class="btn btn-small btn-ghost" data-action="refresh-proposals">↻ New ideas</button></div>
+    <p class="muted">The coach proposed these connection activities. Accept the ones that fit your day.</p>
+    ${tasks.map((task) => {
+      const meta = TASK_PRIORITY[task.type] ?? { label: "Connection", icon: "✅" };
+      return `<div class="card proposal-card" data-proposal-id="${esc(task.id)}">
+        <div class="proposal-header"><span class="task-icon">${meta.icon}</span><span class="task-title"><strong>${esc(task.title)}</strong>${task.description ? `<em>${esc(task.description)}</em>` : ""}${task.skill ? `<span class="skill-badge">${esc(task.skill)}</span>` : ""}</span><span class="xp-pill">+${Number(task.xp) || 0} XP</span></div>
+        <div class="proposal-actions"><select class="frequency-select" data-frequency-for="${esc(task.id)}"><option value="once">One-time</option><option value="daily">Daily</option><option value="weekly"${task.frequency === "weekly" ? " selected" : ""}>Weekly</option></select><button class="btn btn-small" data-action="accept-task" data-task-id="${esc(task.id)}">Accept</button><button class="btn btn-small btn-ghost" data-action="reject-task" data-task-id="${esc(task.id)}">Skip</button></div>
+      </div>`;
+    }).join("")}</section>`;
 }
 
 export function renderCoachLoading() {
@@ -124,6 +139,11 @@ export function renderGamePicker(games = GAMES) {
       <small>${esc(g.blurb)}</small>
       <span class="xp-pill">+${g.xp} XP</span>
     </a>`).join("")}</div>`;
+}
+
+export function renderSuggestionSheet(reminder, suggestions) {
+  const name = reminder?.contact?.name ?? "your contact";
+  return `<h2>Suggestions for ${esc(name)}</h2>${reminder?.reason ? `<p class="muted">${esc(reminder.reason)}</p>` : ""}<p>You could ask about:</p><ul class="suggestion-list">${(Array.isArray(suggestions) ? suggestions : []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul><div class="sheet-actions"><button class="btn" data-action="reached-out">I reached out ✓</button><button class="btn btn-ghost" data-action="close-sheet">Close</button></div>`;
 }
 
 function opportunityDate(item) {
@@ -202,6 +222,7 @@ export function renderHome(state, { debug = false } = {}) {
       <div id="coach-cards">${renderCoachLoading()}</div>
     </section>
     <section class="block"><h2>Today's connection plan</h2><p class="muted">Real-world connections come first. Choose the next step that fits your day.</p>${renderTasks(state.tasks)}</section>
+    ${renderProposedTasks(state.proposed_tasks)}
     <section class="block research-block"><div class="block-head"><div><h2>Research for you</h2><p class="muted">Current public opportunities matched to your profile.</p></div><button class="btn btn-small btn-ghost" data-action="refresh-research">↻ Refresh</button></div><div id="research-panel"><div class="skeleton"></div></div></section>
     <section class="block practice-block"><div class="block-head"><h2>Optional practice</h2><span class="xp-pill">Side quest</span></div>${renderGamePicker()}</section>`;
 }
@@ -272,11 +293,24 @@ async function showCoach(el, force) {
     box.querySelectorAll("[data-coach-index]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const r = joinReminders(reminders, getState()?.contacts)[Number(btn.dataset.coachIndex)];
-        openDraft(r);
+        openSuggestions(r);
       });
     });
   } catch (err) {
     box.innerHTML = renderCoachError(err.message);
+  }
+}
+
+async function openSuggestions(reminder) {
+  const body = openSheet(`<h2>Getting suggestions…</h2><div class="card skeleton"></div>`);
+  try {
+    const response = await post("/api/coach/suggest", { contact_id: reminder.contact_id, reason: reminder.reason ?? reminder.headline ?? "" });
+    body.innerHTML = renderSuggestionSheet(reminder, response?.suggestions);
+    body.querySelector("[data-action=reached-out]").addEventListener("click", () => { closeSheet(); toast("Nice work! Your outreach is logged."); });
+    body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
+  } catch (err) {
+    body.innerHTML = `<div class="error-box">Couldn't get suggestions (${esc(err.message)}).</div><button class="btn btn-ghost" data-action="close-sheet">Close</button>`;
+    body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
   }
 }
 
@@ -328,6 +362,33 @@ registerScreen("home", {
     el.onclick = (e) => {
       if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);
       if (e.target.closest("[data-action=refresh-research]")) showOpportunities(el, true);
+      const accept = e.target.closest("[data-action=accept-task]");
+      if (accept) {
+        const taskId = accept.dataset.taskId;
+        const frequency = el.querySelector(`[data-frequency-for="${taskId}"]`)?.value || "once";
+        post(`/api/tasks/${encodeURIComponent(taskId)}/accept`, { frequency }).then(async () => {
+          toast("Task added to your plan!");
+          const fresh = await refreshState();
+          el.innerHTML = renderHome(fresh, { debug: isDebugMode() });
+          showCoach(el, false);
+          showOpportunities(el);
+        }).catch((err) => toast(`Couldn't accept: ${err.message}`));
+      }
+      const reject = e.target.closest("[data-action=reject-task]");
+      if (reject) {
+        post(`/api/tasks/${encodeURIComponent(reject.dataset.taskId)}/reject`).then(() => {
+          el.querySelector(`[data-proposal-id="${reject.dataset.taskId}"]`)?.remove();
+          toast("Skipped.");
+        }).catch((err) => toast(`Couldn't skip: ${err.message}`));
+      }
+      if (e.target.closest("[data-action=refresh-proposals]")) {
+        post("/api/coach/propose-tasks").then(async () => {
+          const fresh = await refreshState();
+          el.innerHTML = renderHome(fresh, { debug: isDebugMode() });
+          showCoach(el, false);
+          showOpportunities(el);
+        }).catch((err) => toast(`Couldn't get suggestions: ${err.message}`));
+      }
       const radar = e.target.closest("[data-action=save-radar], [data-action=remove-radar]");
       if (radar) {
         const saved = radar.dataset.action === "save-radar";

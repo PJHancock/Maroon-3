@@ -6,6 +6,7 @@ export const SEED = {
   user: {
     name: "Alex", school: "BYU", major: "Computer Science",
     target_roles: ["Data Engineer"], xp: 340, streak: 4, last_active: "2026-10-01", location: "Provo, UT",
+    onboarding_goal: "general",
   },
   contacts: [
     {
@@ -27,6 +28,7 @@ export const SEED = {
     { id: "t1", title: "Attend the Qualtrics info session", type: "in_person", xp: 75, status: "open" },
     { id: "t2", title: "Introduce yourself to a professor after class", type: "in_person", xp: 50, status: "open" },
   ],
+  proposed_tasks: [],
   game_sessions: [
     { id: "g1", game: "coffee_chat", date: "2026-09-30", scores: { curiosity: 4, specificity: 2, rapport: 3 }, xp: 15 },
   ],
@@ -163,6 +165,7 @@ function route(method, path, body) {
     return {
       user: db.user, contacts: db.contacts,
       tasks: db.tasks.filter((t) => t.status === "open"),
+      proposed_tasks: db.proposed_tasks ?? [],
       game_sessions: db.game_sessions.slice(-5),
       radar_ids: db.radar_ids ?? [],
     };
@@ -189,6 +192,44 @@ function route(method, path, body) {
     return { ok: true };
   }
   if (method === "POST" && p === "/api/coach/reminders") return reminders();
+  if (method === "POST" && p === "/api/coach/suggest") {
+    const c = db.contacts.find((x) => x.id === body?.contact_id);
+    const name = c?.name ?? "them";
+    return {
+      suggestions: [
+        `Ask ${name} about ${c?.notes?.[0]?.toLowerCase() ?? "their work"}`,
+        "Ask what they're working on this week",
+        `Ask how their experience connects to ${db.user.target_roles?.[0] ?? "your field"}`,
+      ],
+      contact_id: body?.contact_id,
+      source: "demo",
+    };
+  }
+  if (method === "POST" && p === "/api/coach/propose-tasks") {
+    db.proposed_tasks = [
+      { id: `pt${Date.now()}_1`, title: "Reach out to one new person this week", type: "online_outreach", xp: 35, status: "open", frequency: "weekly", skill: "outreach" },
+      { id: `pt${Date.now()}_2`, title: "Attend a networking event", type: "event", xp: 80, status: "open", skill: "events" },
+      { id: `pt${Date.now()}_3`, title: "Schedule an informational interview", type: "personal_chat", xp: 60, status: "open", skill: "informational interview" },
+    ];
+    return { proposed_tasks: db.proposed_tasks, source: "demo" };
+  }
+  if (method === "POST" && p === "/api/onboarding") {
+    db.user.onboarding_goal = body?.goal || "general";
+    const role = body?.target_role || db.user.target_roles?.[0] || "your target role";
+    const company = body?.target_company || "a company";
+    const templates = body?.goal === "company" ? [
+      { title: `Research ${company}`, type: "online_outreach", xp: 30, skill: "research" },
+      { title: `Find someone at ${company}`, type: "online_outreach", xp: 35, skill: "outreach" },
+    ] : body?.goal === "job" ? [
+      { title: `Research the ${role} role`, type: "online_outreach", xp: 30, skill: "research" },
+      { title: "Schedule an informational interview", type: "personal_chat", xp: 60, skill: "informational interview" },
+    ] : [
+      { title: "Introduce yourself to someone new", type: "in_person", xp: 50, skill: "introductions" },
+      { title: "Contact someone new every week", type: "online_outreach", xp: 35, frequency: "weekly", skill: "outreach" },
+    ];
+    db.tasks.push(...templates.map((task, i) => ({ id: `t${db.tasks.length + i + 1}`, status: "open", ...task })));
+    return { user: db.user, contacts: db.contacts, tasks: db.tasks.filter((t) => t.status === "open"), proposed_tasks: db.proposed_tasks ?? [], game_sessions: db.game_sessions.slice(-5) };
+  }
   if (method === "POST" && p === "/api/coach/draft") {
     const c = db.contacts.find((x) => x.id === body?.contact_id);
     const name = c?.name ?? "there";
@@ -196,6 +237,21 @@ function route(method, path, body) {
       message: `Hi ${name}! I've been thinking about what you said about ${c?.notes?.[0]?.toLowerCase() ?? "your work"}. ` +
         `I'd love to hear how it turned out. Would you be up for a quick coffee sometime next week?`,
     };
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/accept$/))) {
+    const idx = (db.proposed_tasks ?? []).findIndex((t) => t.id === m[1]);
+    if (idx < 0) throw Object.assign(new Error("Proposed task not found"), { status: 404 });
+    const task = db.proposed_tasks.splice(idx, 1)[0];
+    task.frequency = body?.frequency || "once";
+    db.tasks.push(task);
+    return task;
+  }
+  if (method === "POST" && (m = p.match(/^\/api\/tasks\/([^/]+)\/reject$/))) {
+    if (!(db.proposed_tasks ?? []).some((task) => task.id === m[1])) {
+      throw Object.assign(new Error("Proposed task not found"), { status: 404 });
+    }
+    db.proposed_tasks = db.proposed_tasks.filter((task) => task.id !== m[1]);
+    return { ok: true };
   }
   if (method === "POST" && p === "/api/contacts") {
     const contact = {

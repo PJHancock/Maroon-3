@@ -138,7 +138,7 @@ export function renderTaskHeader(task) {
   return `
     <div class="screen-heading">
       <div>
-        <p class="eyebrow">${esc(meta.label)} · ${esc(difficultyLabel(task))}</p>
+        <p class="eyebrow">${esc(meta.label)} · ${esc(difficultyLabel(task))}${task.frequency && task.frequency !== "once" ? ` · ${task.frequency}` : ""}${task.skill ? ` · ${esc(task.skill)}` : ""}</p>
         <h1>${esc(task.title)}</h1>
         ${task.description ? `<p class="muted">${esc(task.description)}</p>` : ""}
       </div>

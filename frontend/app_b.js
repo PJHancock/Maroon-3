@@ -123,6 +123,7 @@ export function normalizeState(raw) {
     },
     contacts: Array.isArray(s.contacts) ? s.contacts : [],
     tasks: Array.isArray(s.tasks) ? s.tasks : Array.isArray(s.open_tasks) ? s.open_tasks : [],
+    proposed_tasks: Array.isArray(s.proposed_tasks) ? s.proposed_tasks : [],
     game_sessions: Array.isArray(s.game_sessions) ? s.game_sessions : [],
     radar_ids: Array.isArray(s.radar_ids) ? s.radar_ids : [],
   };
