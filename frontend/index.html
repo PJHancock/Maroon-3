@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#58CC02">
+  <title>Networking Buddy</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles_b.css">
+  <link rel="stylesheet" href="/styles_c.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Each screen fills its own section from JS. Don't put markup inside them. -->
+    <section id="screen-home" hidden></section>      <!-- home_b.js     (B) -->
+    <section id="screen-contacts" hidden></section>  <!-- contacts_b.js (B) -->
+    <section id="screen-game" hidden></section>      <!-- game.js     (C) -->
+    <section id="screen-score" hidden></section>     <!-- game.js     (C) -->
+    <section id="screen-task" hidden></section>      <!-- tasks.js    (C) -->
+  </main>
+
+  <nav class="tabbar">
+    <a href="#/home" data-nav="home"><span>🏠</span>Home</a>
+    <a href="#/contacts" data-nav="contacts"><span>👥</span>Contacts</a>
+  </nav>
+
+  <!-- One script per screen. If one is missing or broken, the others still load. -->
+  <script type="module" src="/app_b.js"></script>
+  <script type="module" src="/home_b.js"></script>
+  <script type="module" src="/contacts_b.js"></script>
+  <script type="module" src="/game.js"></script>
+  <script type="module" src="/tasks.js"></script>
+</body>
+</html>
