@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, Request
 
 from .errors import DomainError
 from .models import (
-    Contact, ContactCreate, DraftRequest, DraftResponse, HistoryRequest,
-    RemindersResponse, ScoreResponse, StartResponse, StateResponse,
-    TaskComplete, TaskResponse, TurnResponse,
+    Contact, ContactCreate, ContactUpdate, DraftRequest, DraftResponse,
+    HistoryRequest, RadarResponse, RemindersResponse, ResearchResponse,
+    ScoreResponse, StartResponse, StateResponse, TaskComplete, TaskContext,
+    Task, TaskPrepResponse, TaskResponse, TurnResponse,
 )
 from .services import BuddyService
 
@@ -42,9 +43,54 @@ def complete_task(id: str, body: TaskComplete, service: BuddyService = Depends(g
     return service.complete_task(id, body)
 
 
+@router.get("/tasks/{id}/prep", response_model=TaskPrepResponse, tags=["Tasks"])
+def task_prep(id: str, service: BuddyService = Depends(get_service)):
+    return service.task_prep(id)
+
+
+@router.post("/tasks/{id}/context", response_model=TaskContext, tags=["Tasks"])
+def set_task_context(id: str, body: TaskContext, service: BuddyService = Depends(get_service)):
+    return service.set_task_context(id, body).prep_context
+
+
+@router.delete("/tasks/{id}/context", response_model=Task, tags=["Tasks"])
+def clear_task_context(id: str, service: BuddyService = Depends(get_service)):
+    return service.clear_task_context(id)
+
+
 @router.post("/contacts", response_model=Contact, status_code=201, tags=["Contacts"])
 def add_contact(body: ContactCreate, service: BuddyService = Depends(get_service)):
     return service.add_contact(body)
+
+
+@router.put("/contacts/{id}", response_model=Contact, tags=["Contacts"])
+def update_contact(id: str, body: ContactUpdate, service: BuddyService = Depends(get_service)):
+    return service.update_contact(id, body)
+
+
+@router.patch("/contacts/{id}", response_model=Contact, tags=["Contacts"])
+def patch_contact(id: str, body: ContactUpdate, service: BuddyService = Depends(get_service)):
+    return service.update_contact(id, body)
+
+
+@router.delete("/contacts/{id}", tags=["Contacts"])
+def delete_contact(id: str, service: BuddyService = Depends(get_service)):
+    return service.delete_contact(id)
+
+
+@router.get("/opportunities", response_model=ResearchResponse, tags=["Research"])
+async def opportunities(refresh: bool = False, service: BuddyService = Depends(get_service)):
+    return await service.opportunities(refresh=refresh)
+
+
+@router.post("/opportunities/{id}/radar", response_model=RadarResponse, tags=["Research"])
+async def save_opportunity(id: str, service: BuddyService = Depends(get_service)):
+    return await service.set_radar(id, True)
+
+
+@router.delete("/opportunities/{id}/radar", response_model=RadarResponse, tags=["Research"])
+async def remove_opportunity(id: str, service: BuddyService = Depends(get_service)):
+    return await service.set_radar(id, False)
 
 
 @router.post("/coach/reminders", response_model=RemindersResponse, tags=["Coach"])

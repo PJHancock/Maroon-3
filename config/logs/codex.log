@@ -1,0 +1,59 @@
+2026-10-02 14:08:25 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:26 | INFO     | Starting Codex v2.3.0
+2026-10-02 14:08:26 | INFO     | Ensuring database is correct and up to date...
+2026-10-02 14:08:37 | INFO     | Skipping non-comic Comic-row cleanup: no comic-suffix paths in the database to use as a stat sentinel.
+2026-10-02 14:08:38 | INFO     | Skipping phantom Comic-as-folder cleanup: no comic-suffix paths in the database to use as a stat sentinel.
+2026-10-02 14:08:40 | SUCCESS  | Database ready.
+2026-10-02 14:08:40 | SUCCESS  | Created admin user.
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Auto Update = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Banner Text = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Folder View = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Import Metadata = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Lazy Import Metadata = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Non Users = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Registration = True
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Register Verification = False
+2026-10-02 14:08:40 | INFO     | Created AdminFlag: Send Telemetry = True
+2026-10-02 14:08:41 | INFO     | Created 1 missing auth tokens for users.
+2026-10-02 14:08:41 | INFO     | Codex is being served without a url path prefix.
+2026-10-02 14:08:41 | SUCCESS  | Running Codex v2.3.0
+2026-10-02 14:08:41 | SUCCESS  | BroadcastListener started.
+2026-10-02 14:08:42 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:43 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:44 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:45 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:47 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:08:47 | INFO     | LibrarianDaemon started all threads.
+2026-10-02 14:08:47 | SUCCESS  | LibrarianDaemon ready for tasks.
+2026-10-02 14:08:47 | INFO     | Looking for search entries to update since the fracturing of the multiverse...
+2026-10-02 14:08:47 | INFO     | Looking for missing search entries to create...
+2026-10-02 14:08:47 | SUCCESS  | Search index found to be already synced in a moment.
+2026-10-02 14:10:18 | INFO     | Asking granian to shut down gracefully. Could take 10 seconds...
+2026-10-02 14:10:18 | INFO     | LibrarianDaemon joined all threads.
+2026-10-02 14:10:18 | SUCCESS  | LibrarianDaemon finished.
+2026-10-02 14:10:18 | INFO     | BroadcastListener shutdown
+2026-10-02 14:10:19 | SUCCESS  | Goodbye.
+2026-10-02 14:11:02 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:02 | INFO     | Starting Codex v2.3.0
+2026-10-02 14:11:02 | INFO     | Ensuring database is correct and up to date...
+2026-10-02 14:11:02 | WARNING  | Stale SQLite siblings found newer than codex.sqlite3: codex.sqlite3-wal, codex.sqlite3-shm. These are usually left by a previous startup that was killed before clean shutdown, or by dropping a backup file next to leftover sibling files. If the next step fails with 'database disk image is malformed', remove them with `rm /Users/prestonhancock/GitHub/Maroon-3/config/codex.sqlite3-wal /Users/prestonhancock/GitHub/Maroon-3/config/codex.sqlite3-shm /Users/prestonhancock/GitHub/Maroon-3/config/codex.sqlite3-journal` and try again.
+2026-10-02 14:11:02 | SUCCESS  | Database ready.
+2026-10-02 14:11:03 | INFO     | Created 0 missing auth tokens for users.
+2026-10-02 14:11:03 | INFO     | Codex is being served without a url path prefix.
+2026-10-02 14:11:03 | SUCCESS  | Running Codex v2.3.0
+2026-10-02 14:11:03 | SUCCESS  | BroadcastListener started.
+2026-10-02 14:11:04 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:05 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:06 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:07 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:08 | WARNING  | Cannot detect or read from CBR archives
+2026-10-02 14:11:08 | INFO     | LibrarianDaemon started all threads.
+2026-10-02 14:11:08 | SUCCESS  | LibrarianDaemon ready for tasks.
+2026-10-02 14:11:08 | INFO     | Looking for search entries to update since the fracturing of the multiverse...
+2026-10-02 14:11:08 | INFO     | Looking for missing search entries to create...
+2026-10-02 14:11:08 | SUCCESS  | Search index found to be already synced in a moment.
+2026-10-02 14:11:11 | INFO     | Asking granian to shut down gracefully. Could take 10 seconds...
+2026-10-02 14:11:11 | INFO     | LibrarianDaemon joined all threads.
+2026-10-02 14:11:11 | SUCCESS  | LibrarianDaemon finished.
+2026-10-02 14:11:11 | INFO     | BroadcastListener shutdown
+2026-10-02 14:11:12 | SUCCESS  | Goodbye.

@@ -17,7 +17,10 @@ from backend.demo import DEMO_COFFEE_LINES, DemoAI
 from backend.errors import DomainError, StorageError
 from backend.games import GAME_CONFIGS
 from backend.llm import ClaudeAI, ProviderFailure
-from backend.models import ContactCreate, DraftRequest, HistoryRequest, Message, TaskComplete
+from backend.models import (
+    ContactCreate, ContactUpdate, DraftRequest, HistoryRequest, Message,
+    ResearchCandidate, ResearchPayload, TaskComplete, TaskContext,
+)
 from backend.services import BuddyService, award_xp
 
 SEED = Path(__file__).resolve().parents[2] / "backend" / "seed.json"
@@ -167,6 +170,49 @@ class Fixture(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.xp_awarded, 40)
         self.assertEqual(len(self.service.state().contacts), 3)
 
+    def test_task_prep_returns_guidance_and_contacts(self):
+        prep = self.service.task_prep("t5")
+        self.assertEqual(prep.task.id, "t5")
+        self.assertIn("event", prep.guidance.external_hint.lower())
+        self.assertGreaterEqual(len(prep.guidance.steps), 3)
+        self.assertEqual({contact.id for contact in prep.contacts}, {"c1", "c2", "c3"})
+
+    def test_task_context_persists_and_can_be_cleared(self):
+        context = TaskContext(
+            opportunity_id="r_event_1", kind="event", title="Data Engineering Meetup",
+            summary="A public meetup for data professionals.", why_it_fits="Matches the target role.",
+            source_name="Meetup", source_url="https://example.com/source",
+            action_url="https://example.com/event", starts_at="2026-10-17T09:00:00-06:00",
+            location="Provo, UT", tags=["data engineering"],
+        )
+        saved = self.service.set_task_context("t5", context)
+        self.assertEqual(saved.prep_context.title, "Data Engineering Meetup")
+        restarted = BuddyService(JsonRepository(self.repo.path, SEED), DemoAI(), lambda: TODAY, True)
+        self.assertEqual(restarted.task_prep("t5").task.prep_context.opportunity_id, "r_event_1")
+        cleared = restarted.clear_task_context("t5")
+        self.assertIsNone(cleared.prep_context)
+
+    def test_interaction_report_can_update_existing_contact_by_id(self):
+        result = self.service.complete_task("t1", TaskComplete(
+            contact_id="c1", met_name="Sarah", hook="She will share whether the grant was funded.",
+        ))
+        self.assertEqual(result.contact.id, "c1")
+        self.assertIn("She will share whether the grant was funded.", result.contact.notes)
+        self.assertEqual(result.contact.last_contact, TODAY)
+
+    def test_contact_can_be_updated_and_deleted_without_dangling_task_links(self):
+        updated = self.service.update_contact("c2", ContactUpdate(
+            name="Daniel Kim", role="Senior software engineer", notes=["New detail"],
+        ))
+        self.assertEqual((updated.name, updated.role, updated.notes), ("Daniel Kim", "Senior software engineer", ["New detail"]))
+        self.service.complete_task("t6", TaskComplete(
+            contact_id="c2", met_name="Daniel Kim", hook="Discussed his new role",
+        ))
+        self.service.delete_contact("c2")
+        state = self.service.state()
+        self.assertNotIn("c2", [contact.id for contact in state.contacts])
+        self.assertNotIn("c2", [task.contact_id for task in self.repo.load_db().tasks])
+
     def test_contact_id_name_mismatch_rolls_back(self):
         with self.assertRaises(DomainError):
             self.service.complete_task("t1", self.reflection(contact_id="c1"))
@@ -264,6 +310,40 @@ class Fixture(unittest.IsolatedAsyncioTestCase):
         response = await self.service.reminders()
         self.assertEqual(response.reminders, [])
 
+    async def test_research_is_profile_scoped_and_filters_out_of_window_results(self):
+        class ResearchAI(DemoAI):
+            async def research(self, context):
+                return type("Result", (), {
+                    "source": "live",
+                    "value": ResearchPayload(
+                        profile_summary=f"Matches {context['student']['target_roles'][0]} near {context['student']['location']}.",
+                        candidates=[
+                            ResearchCandidate(
+                                kind="event", title="Relevant meetup", summary="A real event.",
+                                why_it_fits="Matches the target role.", source_name="Public calendar",
+                                source_url="https://example.com/event", action_url="https://example.com/event",
+                                starts_at="2026-10-20T18:00:00-06:00", ends_at="2026-10-20T20:00:00-06:00",
+                                location="Provo, UT", tags=["data"],
+                            ),
+                            ResearchCandidate(
+                                kind="event", title="Too late", summary="Outside the window.",
+                                why_it_fits="No.", source_name="Public calendar",
+                                source_url="https://example.com/late", action_url="https://example.com/late",
+                                starts_at="2027-01-15", location="Provo, UT",
+                            ),
+                        ],
+                    ),
+                })()
+
+        self.service.ai = ResearchAI()
+        response = await self.service.opportunities(refresh=True)
+        self.assertEqual([item.title for item in response.opportunities], ["Relevant meetup"])
+        saved = await self.service.set_radar(response.opportunities[0].id, True)
+        self.assertTrue(saved.saved)
+        self.assertIn(response.opportunities[0].id, self.service.state().model_dump()["radar_ids"])
+        removed = await self.service.set_radar(response.opportunities[0].id, False)
+        self.assertFalse(removed.saved)
+
     async def test_maximum_length_contact_notes_keep_fallback_usable(self):
         self.repo.update(lambda db: db.contacts.clear())
         contact = self.service.add_contact(ContactCreate(name="M" * 200, notes=["detail " * 285]))
@@ -306,6 +386,15 @@ class FakeTransport:
 
     async def close(self):
         pass
+
+
+class FakeWebTransport(FakeTransport):
+    async def complete_with_web_search(self, system, messages, max_tokens, *, location=""):
+        self.calls.append((system, messages, max_tokens, location))
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class ClaudeBoundaryTests(unittest.IsolatedAsyncioTestCase):
@@ -380,6 +469,21 @@ class ClaudeBoundaryTests(unittest.IsolatedAsyncioTestCase):
             result = await ClaudeAI(FakeTransport([text])).draft(context)
             self.assertEqual(result.source, "fallback")
             self.assertLess(len(result.value.split()), 80)
+
+    async def test_research_uses_web_search_transport_and_parses_json(self):
+        payload = {"profile_summary": "Data engineering opportunities near Provo.", "candidates": [{
+            "kind": "person", "title": "Public data engineering community", "summary": "A public path.",
+            "why_it_fits": "Relevant to the target role.", "source_name": "Community",
+            "source_url": "https://example.com/source", "action_url": "https://example.com/action",
+            "location": "Provo, UT", "tags": ["data"],
+        }]}
+        transport = FakeWebTransport([json.dumps(payload)])
+        result = await ClaudeAI(transport).research({
+            "student": {"target_roles": ["Data Engineer"], "location": "Provo, UT"},
+        })
+        self.assertEqual(result.source, "live")
+        self.assertEqual(result.value.candidates[0].title, "Public data engineering community")
+        self.assertEqual(transport.calls[0][3], "Provo, UT")
 
 
 if __name__ == "__main__":

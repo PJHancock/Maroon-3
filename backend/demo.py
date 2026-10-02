@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from .games import GameConfig
-from .models import Message, Reminder, ReminderPayload, ScoreFeedback, Source
+from .models import Message, Reminder, ReminderPayload, ResearchPayload, ScoreFeedback, Source
 
 T = TypeVar("T")
 
@@ -160,3 +160,15 @@ class DemoAI:
             hook = " ".join(hook.split()[:25])
             body = f'I made a note from our conversation: "{hook}". What would be a useful small next step to learn more about that?'
         return AIResult(f"Hi {name}, {body} — {student}", "demo")
+
+    async def research(self, context: dict) -> AIResult[ResearchPayload]:
+        student = context.get("student", {})
+        roles = ", ".join(student.get("target_roles") or ["the role you want"])
+        location = student.get("location") or "your area"
+        return AIResult(ResearchPayload(
+            profile_summary=(
+                f"Live research will look for public {roles} connection paths and "
+                f"upcoming events near {location}. Enable live mode to search current sources."
+            ),
+            candidates=[],
+        ), "demo")

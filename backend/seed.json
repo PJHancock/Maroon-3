@@ -4,6 +4,7 @@
     "school": "BYU",
     "major": "Computer Science",
     "target_roles": ["Data Engineer"],
+    "location": "Provo, UT",
     "xp": 340,
     "streak": 4,
     "last_active": "2026-10-01",
@@ -85,7 +86,7 @@
       "description": "Find a relevant meetup, campus event, or hack night and talk to one person there.",
       "type": "event",
       "difficulty": "hard",
-      "location": "Nearby event · AI search later",
+      "location": "Research-backed matches below",
       "event_search": true,
       "xp": 100,
       "status": "open"

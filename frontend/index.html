@@ -8,6 +8,7 @@
   <title>Networking Buddy</title>
   <link rel="manifest" href="/manifest_C.json">
   <link rel="icon" href="/icons/icon-192_C.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-192_C.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles_b.css">
@@ -33,5 +34,10 @@
   <script type="module" src="/contacts_b.js"></script>
   <script type="module" src="/game_C.js"></script>
   <script type="module" src="/tasks_C.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+    }
+  </script>
 </body>
 </html>

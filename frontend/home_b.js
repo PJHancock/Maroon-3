@@ -2,7 +2,7 @@
 // Owner: Teammate B. Render functions are pure (data -> HTML) so they're unit-tested.
 
 import {
-  registerScreen, getState, refreshState, post, esc,
+  registerScreen, getState, refreshState, post, api, esc,
   openSheet, closeSheet, copyText, toast,
   isDebugMode, applyDebugXp, showCelebration, _setState,
 } from "./app_b.js";
@@ -110,7 +110,7 @@ export function renderTasks(tasks) {
     return `
       <a class="card task-card ${realWorld ? "task-card--priority" : ""}" href="#/task/${encodeURIComponent(t.id)}">
         <span class="task-icon">${meta.icon}</span>
-        <span class="task-title"><small>${esc(meta.label)} · ${esc(difficulty)}</small><strong>${esc(t.title)}</strong>${t.description ? `<em>${esc(t.description)}</em>` : ""}${t.location ? `<em>${esc(t.location)}</em>` : ""}</span>
+        <span class="task-title"><small>${esc(meta.label)} · ${esc(difficulty)}</small><strong>${esc(t.title)}</strong>${t.description ? `<em>${esc(t.description)}</em>` : ""}${t.location ? `<em>${esc(t.location)}</em>` : ""}<em>Prepare →</em></span>
         <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
       </a>`;
   }).join("");
@@ -124,6 +124,59 @@ export function renderGamePicker(games = GAMES) {
       <small>${esc(g.blurb)}</small>
       <span class="xp-pill">+${g.xp} XP</span>
     </a>`).join("")}</div>`;
+}
+
+function opportunityDate(item) {
+  if (!item?.starts_at) return ""
+  const date = new Date(item.starts_at);
+  if (Number.isNaN(date.getTime())) return String(item.starts_at).slice(0, 10);
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+export function eventToICS(item) {
+  if (!item?.starts_at) return "";
+  const toICSDate = (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  };
+  const start = toICSDate(item.starts_at);
+  const end = toICSDate(item.ends_at) || toICSDate(new Date(new Date(item.starts_at).getTime() + 3600000));
+  if (!start || !end) return "";
+  const fold = (value) => String(value ?? "").replace(/[\\;,\n]/g, (c) => `\\${c}`);
+  return [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Networking Buddy//EN", "BEGIN:VEVENT",
+    `UID:${item.id}@networking-buddy`, `DTSTAMP:${toICSDate(new Date())}`,
+    `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${fold(item.title)}`,
+    `DESCRIPTION:${fold(item.summary)}\\n\\n${fold(item.why_it_fits)}`,
+    `LOCATION:${fold(item.location)}`, `URL:${item.action_url}`, "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+export function renderResearchPanel(response) {
+  const opportunities = Array.isArray(response?.opportunities) ? response.opportunities : [];
+  const source = response?.source ?? "fallback";
+  if (!opportunities.length) {
+    const message = source === "demo"
+      ? "Turn on live mode with your Claude key to search current public events and professional communities for this profile."
+      : "No current matches were returned. Refresh after changing your profile or try again later.";
+    return `<div class="research-empty"><p>${esc(message)}</p><button class="btn btn-small btn-ghost" data-action="refresh-research">Refresh research</button></div>`;
+  }
+  return `<div class="research-summary"><p>${esc(response.profile_summary ?? "Research matched to your profile.")}</p><small>Research checked ${esc(response.searched_at ?? "today")} · through ${esc(response.window_ends ?? "the next 90 days")}</small></div>
+    <div class="research-list">${opportunities.map((item) => `
+      <article class="card research-card">
+        <div class="research-card-head"><span class="eyebrow">${item.kind === "event" ? "Upcoming event" : "People to explore"}</span>${item.on_radar ? `<span class="radar-badge">On radar</span>` : ""}</div>
+        <h3>${esc(item.title)}</h3>
+        ${item.starts_at ? `<p class="research-date">📅 ${esc(opportunityDate(item))}</p>` : ""}
+        ${item.location ? `<p class="research-location">📍 ${esc(item.location)}</p>` : ""}
+        <p>${esc(item.summary)}</p><p class="research-fit">${esc(item.why_it_fits)}</p>
+        <small class="research-source">Source: <a href="${esc(item.source_url)}" target="_blank" rel="noopener">${esc(item.source_name)}</a></small>
+        <div class="research-actions">
+          <a class="btn btn-small" href="${esc(item.action_url)}" target="_blank" rel="noopener">${item.kind === "event" ? "Details / RSVP" : "Explore people"}</a>
+          ${item.kind === "event" && item.starts_at ? `<a class="btn btn-small btn-ghost" href="data:text/calendar;charset=utf-8,${encodeURIComponent(eventToICS(item))}" download="${esc(item.id)}.ics">Add to calendar</a>` : ""}
+          <button class="btn btn-small btn-ghost" data-action="${item.on_radar ? "remove-radar" : "save-radar"}" data-opportunity-id="${esc(item.id)}">${item.on_radar ? "Remove radar" : "Save to radar"}</button>
+        </div>
+      </article>`).join("")}</div>`;
 }
 
 export function renderDebugPanel() {
@@ -149,6 +202,7 @@ export function renderHome(state, { debug = false } = {}) {
       <div id="coach-cards">${renderCoachLoading()}</div>
     </section>
     <section class="block"><h2>Today's connection plan</h2><p class="muted">Real-world connections come first. Choose the next step that fits your day.</p>${renderTasks(state.tasks)}</section>
+    <section class="block research-block"><div class="block-head"><div><h2>Research for you</h2><p class="muted">Current public opportunities matched to your profile.</p></div><button class="btn btn-small btn-ghost" data-action="refresh-research">↻ Refresh</button></div><div id="research-panel"><div class="skeleton"></div></div></section>
     <section class="block practice-block"><div class="block-head"><h2>Optional practice</h2><span class="xp-pill">Side quest</span></div>${renderGamePicker()}</section>`;
 }
 
@@ -248,6 +302,17 @@ async function openDraft(reminder) {
   body.querySelector("[data-action=close-sheet]").addEventListener("click", closeSheet);
 }
 
+async function showOpportunities(el, force = false) {
+  const box = el.querySelector("#research-panel");
+  if (!box) return;
+  box.innerHTML = `<div class="skeleton"></div>`;
+  try {
+    box.innerHTML = renderResearchPanel(await api(`/api/opportunities${force ? "?refresh=true" : ""}`));
+  } catch (err) {
+    box.innerHTML = `<div class="error-box">Research couldn't load (${esc(err.message)}). <button class="btn btn-small btn-ghost" data-action="refresh-research">Try again</button></div>`;
+  }
+}
+
 registerScreen("home", {
   async show({ el }) {
     // /api/state is a local file read, so always fetch fresh XP and tasks;
@@ -262,9 +327,20 @@ registerScreen("home", {
     el.innerHTML = renderHome(state, { debug: isDebugMode() });
     el.onclick = (e) => {
       if (e.target.closest("[data-action=refresh-coach]")) showCoach(el, true);
+      if (e.target.closest("[data-action=refresh-research]")) showOpportunities(el, true);
+      const radar = e.target.closest("[data-action=save-radar], [data-action=remove-radar]");
+      if (radar) {
+        const saved = radar.dataset.action === "save-radar";
+        radar.disabled = true;
+        api(`/api/opportunities/${encodeURIComponent(radar.dataset.opportunityId)}/radar`, { method: saved ? "POST" : "DELETE" })
+          .then(() => showOpportunities(el))
+          .then(() => toast(saved ? "Saved to your radar" : "Removed from your radar"))
+          .catch((err) => { radar.disabled = false; toast(`Couldn't update radar: ${err.message}`); });
+      }
       const dbg = e.target.closest("[data-debug-xp]");
       if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
     };
     showCoach(el, false);
+    showOpportunities(el);
   },
 });
