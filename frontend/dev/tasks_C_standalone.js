@@ -13,7 +13,7 @@
   };
 
   function api() {
-    if (!Buddy.api) throw new Error("No Networking Buddy API adapter has been configured.");
+    if (!Buddy.api) throw new Error("No Nudge API adapter has been configured.");
     return Buddy.api;
   }
 

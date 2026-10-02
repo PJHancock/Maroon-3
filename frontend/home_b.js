@@ -202,8 +202,8 @@ export function eventToICS(item) {
   }
   const fold = (value) => String(value ?? "").replace(/[\\;,\n]/g, (c) => `\\${c}`);
   return [
-    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Networking Buddy//EN", "BEGIN:VEVENT",
-    `UID:${item.id}@networking-buddy`, `DTSTAMP:${toICSDate(new Date())}`,
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Nudge//EN", "BEGIN:VEVENT",
+    `UID:${item.id}@nudge`, `DTSTAMP:${toICSDate(new Date())}`,
     ...dates, `SUMMARY:${fold(item.title)}`,
     `DESCRIPTION:${fold(item.summary)}\\n\\n${fold(item.why_it_fits)}`,
     `LOCATION:${fold(item.location)}`, `URL:${item.action_url}`, "END:VEVENT", "END:VCALENDAR",
@@ -259,7 +259,7 @@ function onboardingLines(values) {
 export function renderWelcome() {
   return `<div class="welcome-screen">
     <div class="welcome-mark">🤝</div>
-    <div class="intro-kicker">NETWORKING BUDDY</div>
+    <div class="intro-kicker">NUDGE</div>
     <h1>Build your network, one real connection at a time.</h1>
     <p class="muted welcome-lede">Your coach will help you find the right people, practice what to say, and follow up in a way that feels genuine.</p>
     <div class="welcome-points">
@@ -274,7 +274,7 @@ export function renderWelcome() {
 
 export function renderOnboarding(user = {}) {
   return `<div class="intro-screen">
-    <div class="intro-kicker">NETWORKING BUDDY</div>
+    <div class="intro-kicker">NUDGE</div>
     <h1>Let’s make this personal.</h1>
     <p class="muted intro-lede">Tell your coach about you once, and it can help you find the right people and write invitations that sound like you.</p>
     <form class="card intro-form" novalidate>

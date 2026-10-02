@@ -62,7 +62,7 @@ def create_app(settings: Settings | None = None, *, repository=None, ai=None, to
             if transport:
                 await transport.close()
 
-    app = FastAPI(title="Networking Buddy API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Nudge API", version="0.1.0", lifespan=lifespan)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                            allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
@@ -107,7 +107,7 @@ def create_app(settings: Settings | None = None, *, repository=None, ai=None, to
         if index_path.is_file():
             return FileResponse(index_path)
         return HTMLResponse('<!doctype html><meta name="viewport" content="width=device-width">'
-                            '<title>Networking Buddy backend</title><h1>Backend ready</h1>'
+                            '<title>Nudge backend</title><h1>Backend ready</h1>'
                             '<p>Add the team\'s files to frontend/ to load the app.</p>'
                             '<p><a href="/docs">Try the API</a> · <a href="/api/state">Demo state</a></p>')
 

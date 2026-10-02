@@ -1,6 +1,6 @@
-# Networking Buddy
+# Nudge
 
-Networking Buddy helps students build a daily habit of real professional connections. The home experience prioritizes in-person events, personal chats, calls, online outreach, and thoughtful follow-up. Practice games are optional side quests.
+Nudge helps students build a daily habit of real professional connections. The home experience prioritizes in-person events, personal chats, calls, online outreach, and thoughtful follow-up. Practice games are optional side quests.
 
 ## Run the backend
 

@@ -1,4 +1,4 @@
-"""Run Networking Buddy so a phone on the same Wi-Fi can open it."""
+"""Run Nudge so a phone on the same Wi-Fi can open it."""
 
 from __future__ import annotations
 

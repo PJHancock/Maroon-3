@@ -1,5 +1,5 @@
 // Bump the version when APP_SHELL changes so old caches are dropped.
-const CACHE_NAME = "networking-buddy-shell-v4";
+const CACHE_NAME = "nudge-shell-v5";
 const APP_SHELL = [
   "/",
   "/styles_b.css",
@@ -12,6 +12,8 @@ const APP_SHELL = [
   "/game_C.js",
   "/tasks_C.js",
   "/manifest_C.json",
+  "/icons/icon-192.png",
+  "/icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {

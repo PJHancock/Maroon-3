@@ -123,8 +123,8 @@ export function eventToICS(item) {
   if (!start || !end) return "";
   const fold = (value) => String(value ?? "").replace(/[\\;,\n]/g, (c) => `\\${c}`);
   return [
-    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Networking Buddy//EN", "BEGIN:VEVENT",
-    `UID:${item.id}@networking-buddy`, `DTSTAMP:${toICSDate(new Date())}`,
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Nudge//EN", "BEGIN:VEVENT",
+    `UID:${item.id}@nudge`, `DTSTAMP:${toICSDate(new Date())}`,
     `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${fold(item.title)}`,
     `DESCRIPTION:${fold(item.summary)}\\n\\n${fold(item.why_it_fits)}`,
     `LOCATION:${fold(item.location)}`, `URL:${item.action_url}`, "END:VEVENT", "END:VCALENDAR",

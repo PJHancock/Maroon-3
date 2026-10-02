@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Nudge app icon, full-bleed square: iOS rounds the corners itself, and Android
+       crops "maskable" icons to its own shapes, so everything important stays
+       inside the central safe zone (a circle of radius 205). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fdb1f"/>
+      <stop offset="1" stop-color="#46a302"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 256) scale(0.86) translate(-256 -256)">
+    <g stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="72">
+      <path d="M178 378 V250 a78 78 0 0 1 156 0 V378" stroke="#2f7a00" transform="translate(0 16)"/>
+      <path d="M178 378 V250 a78 78 0 0 1 156 0 V378" stroke="#ffffff"/>
+    </g>
+    <circle cx="364" cy="150" r="50" fill="#46a302"/>
+    <circle cx="364" cy="150" r="38" fill="#ff9600"/>
+    <circle cx="364" cy="144" r="38" fill="#ffb020"/>
+    <path d="M418 92 a74 74 0 0 1 22 40" stroke="#ffffff" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.85"/>
+  </g>
+</svg>

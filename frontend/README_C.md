@@ -1,4 +1,4 @@
-# Networking Buddy frontend
+# Nudge frontend
 
 ## Test Teammate C independently
 
