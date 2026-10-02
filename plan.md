@@ -1,0 +1,13 @@
+Job Hunt Dashboard - specific to software devs for now, could be expanded for any kind of job
+- Sorts your job hunt by company
+- Gives ideas for what to do next:
+  - Reach out to someone at the company
+  - Schedule informational interviews
+    - Suggest questions to ask - don't give templates
+  - Build a project using languages/libraries the company uses
+  - Tailor your resume per company, keep a main version and specific versions
+- Give ideas for finding more companies:
+  - Reach out to friends, colleagues, mentors, employers
+- Sorting is folder based maybe?
+- Maybe have an LLM suggest questions to ask, find data about companies - Don't have it do practice interviews, the user can practice by doing
+- Suggest or find events such as career fairs, hackathons, coding competitions, etc.
