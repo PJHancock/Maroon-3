@@ -65,7 +65,7 @@ def create_app(settings: Settings | None = None, *, repository=None, ai=None, to
     app = FastAPI(title="Networking Buddy API", version="0.1.0", lifespan=lifespan)
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
-                           allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+                           allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, error: DomainError):

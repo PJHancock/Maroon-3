@@ -1,7 +1,7 @@
 // contacts_b.js — contact log with search and an add-contact form.
 // Owner: Teammate B. Render, search, and validation functions are pure and unit-tested.
 
-import { registerScreen, getState, refreshState, post, esc, daysSince, todayISO, toast } from "./app_b.js";
+import { registerScreen, getState, refreshState, post, api, esc, daysSince, todayISO, toast } from "./app_b.js";
 
 export function lastContactLabel(isoDate, today) {
   const d = daysSince(isoDate, today);
@@ -64,6 +64,10 @@ export function renderContact(c, today) {
       ${links ? `<div class="contact-links">${links}</div>` : ""}
       ${notes.length ? `<ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
       ${when ? `<p class="when">${esc(when)}</p>` : ""}
+      <div class="contact-actions">
+        <button class="btn btn-small btn-ghost" type="button" data-action="edit-contact" data-contact-id="${esc(c.id)}">Edit</button>
+        <button class="btn btn-small btn-danger" type="button" data-action="delete-contact" data-contact-id="${esc(c.id)}">Delete</button>
+      </div>
     </article>`;
 }
 
@@ -75,30 +79,33 @@ export function renderContactList(contacts, today, query = "") {
   return list.map((c) => renderContact(c, today)).join("");
 }
 
-export function renderContactForm(today = todayISO()) {
+export function renderContactForm(today = todayISO(), contact = null) {
   const field = (name, label, attrs = "") => `
     <label class="field"><span>${label}</span><input name="${name}" ${attrs}></label>`;
+  const value = (name) => esc(contact?.[name] ?? "");
+  const date = contact?.last_contact || today;
+  const notes = Array.isArray(contact?.notes) ? contact.notes.join("\n") : "";
   return `
-    <form class="card contact-form" novalidate>
-      <h2>Add a contact</h2>
-      ${field("name", "Name *", 'autocomplete="off" required')}
-      ${field("how_met", "How you met *", 'placeholder="Career fair, class, a friend…" required')}
-      ${field("last_contact", "Date met *", `type="date" value="${today}" max="${today}" required`)}
-      ${field("company", "Company")}
-      ${field("role", "Role")}
-      ${field("phone", "Phone", 'type="tel" inputmode="tel" autocomplete="off" placeholder="(801) 555-0123"')}
-      ${field("email", "Email", 'type="email" inputmode="email" autocomplete="off" autocapitalize="off" placeholder="name@company.com"')}
+    <form class="card contact-form" data-editing="${contact ? "true" : "false"}" novalidate>
+      <h2>${contact ? "Edit contact" : "Add a contact"}</h2>
+      ${field("name", "Name *", `autocomplete="off" required value="${value("name")}"`)}
+      ${field("how_met", `How you met${contact ? "" : " *"}`, `placeholder="Career fair, class, a friend…" value="${value("how_met")}"`)}
+      ${field("last_contact", "Date met *", `type="date" value="${esc(date)}" max="${today}" required`)}
+      ${field("company", "Company", `value="${value("company")}"`)}
+      ${field("role", "Role", `value="${value("role")}"`)}
+      ${field("phone", "Phone", `type="tel" inputmode="tel" autocomplete="off" placeholder="(801) 555-0123" value="${value("phone")}"`)}
+      ${field("email", "Email", `type="email" inputmode="email" autocomplete="off" autocapitalize="off" placeholder="name@company.com" value="${value("email")}"`)}
       <label class="field"><span>Notes (one per line)</span>
-        <textarea name="notes" rows="3" placeholder="What did you talk about?"></textarea></label>
+        <textarea name="notes" rows="3" placeholder="What did you talk about?">${esc(notes)}</textarea></label>
       <div class="sheet-actions">
-        <button class="btn" type="submit">Save contact</button>
+        <button class="btn" type="submit">${contact ? "Save changes" : "Save contact"}</button>
         <button class="btn btn-ghost" type="button" data-action="cancel-add">Cancel</button>
       </div>
     </form>`;
 }
 
 // Turns raw form values into the POST /api/contacts body.
-export function validateContactForm(values, today = todayISO()) {
+export function validateContactForm(values, today = todayISO(), options = {}) {
   const v = values ?? {};
   const clean = (x) => String(x ?? "").trim();
   const payload = {
@@ -115,7 +122,7 @@ export function validateContactForm(values, today = todayISO()) {
   if (!payload.name) errors.name = "Add their name";
   if (payload.phone && !isValidPhone(payload.phone)) errors.phone = "That doesn't look like a phone number";
   if (payload.email && !isValidEmail(payload.email)) errors.email = "That doesn't look like an email";
-  if (!payload.how_met) errors.how_met = "Add how you met";
+  if (options.requireHowMet !== false && !payload.how_met) errors.how_met = "Add how you met";
   if (!payload.last_contact) errors.last_contact = "Pick the date you met";
   else if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.last_contact) || daysSince(payload.last_contact, today) === null) {
     errors.last_contact = "That isn't a valid date";
@@ -149,26 +156,33 @@ function showFieldErrors(form, errors) {
   }
 }
 
-function showForm(el) {
+function showForm(el, contact = null) {
   const slot = el.querySelector("#contact-form-slot");
-  slot.innerHTML = renderContactForm();
+  slot.innerHTML = renderContactForm(todayISO(), contact);
   const form = slot.querySelector("form");
   form.querySelector("input[name=name]").focus();
   form.querySelector("[data-action=cancel-add]").addEventListener("click", () => (slot.innerHTML = ""));
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const { ok, errors, payload } = validateContactForm(Object.fromEntries(new FormData(form)));
+    const { ok, errors, payload } = validateContactForm(
+      Object.fromEntries(new FormData(form)), todayISO(),
+      { requireHowMet: !contact },
+    );
     showFieldErrors(form, errors);
     if (!ok) return;
     const btn = form.querySelector("button[type=submit]");
     btn.disabled = true;
     btn.textContent = "Saving…";
     try {
-      await post("/api/contacts", payload);
+      if (contact) {
+        await api(`/api/contacts/${encodeURIComponent(contact.id)}`, { method: "PUT", body: payload });
+      } else {
+        await post("/api/contacts", payload);
+      }
       await refreshState();
       slot.innerHTML = "";
       redrawList(el);
-      toast(`Added ${payload.name}`);
+      toast(`${contact ? "Updated" : "Added"} ${payload.name}`);
     } catch (err) {
       btn.disabled = false;
       btn.textContent = "Save contact";
@@ -190,6 +204,21 @@ registerScreen("contacts", {
     el.innerHTML = renderContactsScreen(state.contacts);
     el.onclick = (e) => {
       if (e.target.closest("[data-action=add-contact]")) showForm(el);
+      const action = e.target.closest("[data-action=edit-contact], [data-action=delete-contact]");
+      if (!action) return;
+      const contact = getState()?.contacts?.find((item) => item.id === action.dataset.contactId);
+      if (!contact) return toast("That contact is no longer available");
+      if (action.dataset.action === "edit-contact") {
+        showForm(el, contact);
+      } else if (globalThis.confirm?.(`Delete ${contact.name}? Their saved interaction notes will no longer be attached to this contact.`)) {
+        api(`/api/contacts/${encodeURIComponent(contact.id)}`, { method: "DELETE" })
+          .then(async () => {
+            await refreshState();
+            redrawList(el);
+            toast(`Deleted ${contact.name}`);
+          })
+          .catch((err) => toast(`Couldn't delete contact: ${err.message}`));
+      }
     };
     el.querySelector(".search").addEventListener("input", (e) => {
       query = e.target.value;
