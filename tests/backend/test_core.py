@@ -20,7 +20,7 @@ from backend.llm import ClaudeAI, ProviderFailure
 from backend.models import ContactCreate, DraftRequest, HistoryRequest, Message, TaskComplete
 from backend.services import BuddyService, award_xp
 
-SEED = Path(__file__).resolve().parents[1] / "backend" / "seed.json"
+SEED = Path(__file__).resolve().parents[2] / "backend" / "seed.json"
 TODAY = date(2026, 10, 2)
 
 
@@ -161,10 +161,10 @@ class Fixture(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.state().user.xp, 340)
 
     def test_follow_up_task_uses_existing_contact(self):
-        result = self.service.complete_task("t3", self.reflection(
+        result = self.service.complete_task("t6", self.reflection(
             met_name="Daniel", company="Utah tech company", hook="Asked about SQL practice"))
         self.assertEqual(result.contact.id, "c2")
-        self.assertEqual(result.xp_awarded, 100)
+        self.assertEqual(result.xp_awarded, 40)
         self.assertEqual(len(self.service.state().contacts), 3)
 
     def test_contact_id_name_mismatch_rolls_back(self):

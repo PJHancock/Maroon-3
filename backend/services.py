@@ -1,6 +1,7 @@
 """Application use cases. Business rules do not depend on FastAPI or Claude."""
 
 import hashlib
+import inspect
 import json
 from collections import defaultdict
 from collections.abc import Callable
@@ -26,6 +27,7 @@ def award_xp(user: User, amount: int, today: date) -> None:
         user.streak = 1
     user.last_active = today
     user.xp += amount
+    user.today_connection_done = True
 
 
 def normalize_identity(value: str) -> str:
@@ -40,6 +42,13 @@ class BuddyService:
         self.today = today
         self.demo_mode = demo_mode
 
+    async def _ai_call(self, method, *args, context: dict):
+        # Keep compatibility with simple test/demonstration AI doubles that
+        # implement the original two-argument interface.
+        if "context" in inspect.signature(method).parameters:
+            return await method(*args, context=context)
+        return await method(*args)
+
     def state(self) -> StateResponse:
         database = self.repository.load_db()
         return StateResponse(
@@ -50,13 +59,22 @@ class BuddyService:
             today=self.today(), mode="demo" if self.demo_mode else "live",
         )
 
+    def _game_context(self, database: Database) -> dict:
+        return {
+            "today": self.today().isoformat(),
+            "user": database.user.model_dump(mode="json"),
+            "contacts": [c.model_dump(mode="json") for c in database.contacts[:8]],
+            "open_tasks": [t.model_dump(mode="json") for t in database.tasks if t.status == "open"][:8],
+            "recent_game_sessions": [s.model_dump(mode="json") for s in database.game_sessions[-5:]],
+        }
+
     def reset(self) -> StateResponse:
         self.repository.reset_db()
         return self.state()
 
     async def start(self, name: str) -> StartResponse:
         game = get_game(name)
-        answer = await self.ai.start(game)
+        answer = await self._ai_call(self.ai.start, game, context=self._game_context(self.repository.load_db()))
         identifier = "g_" + uuid4().hex
         today = self.today()
 
@@ -97,7 +115,7 @@ class BuddyService:
         self._check_session(database, name, request.session_id)
         if request.session_id and any(s.id == request.session_id for s in database.game_sessions):
             raise DomainError("Session has already been scored", "session_completed", 409)
-        answer = await self.ai.turn(game, request.history)
+        answer = await self._ai_call(self.ai.turn, game, request.history, context=self._game_context(database))
         return TurnResponse(reply=answer.value, turns_used=count,
                             turns_remaining=game.max_turns - count,
                             game_complete=count == game.max_turns, source=answer.source)
@@ -129,7 +147,7 @@ class BuddyService:
         cached = previous(self.repository.load_db())
         if cached:
             return cached
-        answer = await self.ai.score(game, request.history)
+        answer = await self._ai_call(self.ai.score, game, request.history, context=self._game_context(self.repository.load_db()))
         validate_rubric(answer.value, game)
 
         def commit(database: Database) -> ScoreResponse:
@@ -152,8 +170,11 @@ class BuddyService:
         return self.repository.update(commit)
 
     def add_contact(self, request: ContactCreate) -> Contact:
-        contact = Contact(**request.model_dump(), id="c_" + uuid4().hex,
-                          last_contact=self.today())
+        if request.last_contact and request.last_contact > self.today():
+            raise DomainError("The contact date cannot be in the future", "future_contact_date", 422)
+        values = request.model_dump()
+        values["last_contact"] = request.last_contact or self.today()
+        contact = Contact(**values, id="c_" + uuid4().hex)
 
         def commit(database: Database):
             database.contacts.append(contact)

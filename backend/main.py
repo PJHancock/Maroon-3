@@ -1,152 +1,118 @@
-import os
-from datetime import date, timedelta
-from pathlib import Path
-from typing import Any
+"""Composition root: configure resources, mount routes, then serve B/C's files."""
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+# Support both `uvicorn backend.main:app` at the repo root and the build plan's
+# `uvicorn main:app` when launched inside backend/.
+if not __package__:
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "backend"
+
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException
 
-from .db import load_db, reset_db, save_db
-from .games import GAME_CONFIGS
-from .llm import persona_turn, score_game
+from .config import Settings, get_settings
+from .db import JsonRepository
+from .demo import DemoAI
+from .errors import DomainError, StorageError
+from .llm import ClaudeAI, ClaudeTransport
+from .routes import router
+from .services import BuddyService
 
-
-load_dotenv()
-app = FastAPI(title="Networking Buddy API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-
-class GameRequest(BaseModel):
-    history: list[dict[str, Any]] = Field(default_factory=list)
-    context: dict[str, Any] = Field(default_factory=dict)
+logger = logging.getLogger(__name__)
 
 
-class TaskCompletion(BaseModel):
-    met_name: str = Field(min_length=1, max_length=120)
-    role: str = Field(default="", max_length=120)
-    company: str = Field(default="", max_length=160)
-    hook: str = Field(min_length=1, max_length=1000)
+def create_app(settings: Settings | None = None, *, repository=None, ai=None, today=None) -> FastAPI:
+    settings = settings or get_settings()
+    store = repository or JsonRepository(settings.db_path, settings.seed_path)
 
+    def app_today():
+        if settings.demo_mode and settings.demo_date:
+            return settings.demo_date
+        return datetime.now(ZoneInfo(settings.timezone)).date()
 
-class ContactCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    how_met: str = Field(default="", max_length=160)
-    company: str = Field(default="", max_length=160)
-    role: str = Field(default="", max_length=120)
-    notes: list[str] = Field(default_factory=list)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if isinstance(store, JsonRepository):
+            store.initialize()
+        transport = None
+        if ai is not None:
+            engine = ai
+        elif settings.demo_mode:
+            engine = DemoAI()
+        else:
+            transport = ClaudeTransport(settings.api_key, settings.model, settings.llm_timeout)
+            engine = ClaudeAI(transport, settings.llm_timeout)
+        app.state.settings = settings
+        app.state.buddy = BuddyService(store, engine, today or app_today, settings.demo_mode)
+        try:
+            yield
+        finally:
+            if transport:
+                await transport.close()
 
+    app = FastAPI(title="Networking Buddy API", version="0.1.0", lifespan=lifespan)
+    if settings.cors_origins:
+        app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
+                           allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 
-def public_state() -> dict[str, Any]:
-    state = load_db()
-    state["open_tasks"] = [task for task in state.get("tasks", []) if task.get("status") == "open"]
-    return state
+    @app.exception_handler(DomainError)
+    async def domain_error(request: Request, error: DomainError):
+        return JSONResponse(status_code=error.status, content={"detail": error.detail, "code": error.code})
 
+    @app.exception_handler(StorageError)
+    async def storage_error(request: Request, error: StorageError):
+        logger.error("Database operation failed (%s)", type(error).__name__)
+        return JSONResponse(status_code=503, content={"detail": "Data could not be saved or loaded. Try again.", "code": "storage_unavailable"})
 
-def today() -> str:
-    return date.today().isoformat()
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, error: RequestValidationError):
+        # Omit the rejected input and exception objects; keep field locations.
+        issues = [{"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in error.errors()]
+        return JSONResponse(status_code=422, content=jsonable_encoder({"detail": issues, "code": "validation_error"}))
 
+    @app.exception_handler(HTTPException)
+    async def http_error(request: Request, error: HTTPException):
+        return JSONResponse(status_code=error.status_code,
+                            content={"detail": error.detail, "code": "http_error"}, headers=error.headers)
 
-def award_connection_xp(state: dict[str, Any], amount: int) -> None:
-    user = state.setdefault("user", {})
-    current_day = today()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    user["xp"] = int(user.get("xp", 0)) + int(amount)
-    if user.get("last_active") == current_day:
-        user["today_connection_done"] = True
-        return
-    user["streak"] = int(user.get("streak", 0)) + 1 if user.get("last_active") == yesterday else 1
-    user["last_active"] = current_day
-    user["today_connection_done"] = True
+    @app.middleware("http")
+    async def no_stale_state(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
+    app.include_router(router)
 
-@app.get("/api/state")
-def get_state() -> dict[str, Any]:
-    return public_state()
+    # Register API fallthrough before the frontend so a typo is a JSON 404.
+    @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+    async def unknown_api(path: str):
+        raise DomainError("API route not found", "route_not_found", 404)
 
-
-@app.post("/api/games/{game}/start")
-def start_game(game: str, payload: GameRequest) -> dict[str, Any]:
-    config = GAME_CONFIGS.get(game)
-    if not config:
-        raise HTTPException(status_code=404, detail="Unknown game")
-    return {"title": config["title"], "goal": config["goal"], "opening_line": config["opening_line"], "max_turns": config["max_turns"]}
-
-
-@app.post("/api/games/{game}/turn")
-def game_turn(game: str, payload: GameRequest) -> dict[str, str]:
-    if game not in GAME_CONFIGS:
-        raise HTTPException(status_code=404, detail="Unknown game")
-    return {"reply": persona_turn(game, payload.history, payload.context)}
-
-
-@app.post("/api/games/{game}/score")
-def score(game: str, payload: GameRequest) -> dict[str, Any]:
-    config = GAME_CONFIGS.get(game)
-    if not config:
-        raise HTTPException(status_code=404, detail="Unknown game")
-    result = score_game(game, payload.history, payload.context)
-    result["xp"] = config["xp"]
-    state = load_db()
-    state.setdefault("game_sessions", []).insert(0, {"id": f"g{len(state.get('game_sessions', [])) + 1}", "game": game, "date": today(), "scores": result.get("scores", {}), "xp": config["xp"]})
-    state.setdefault("user", {})["xp"] = int(state.get("user", {}).get("xp", 0)) + config["xp"]
-    save_db(state)
-    return result
-
-
-@app.post("/api/tasks/{task_id}/complete")
-def complete_task(task_id: str, payload: TaskCompletion) -> dict[str, Any]:
-    state = load_db()
-    task = next((item for item in state.get("tasks", []) if item.get("id") == task_id), None)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("status") == "complete":
-        raise HTTPException(status_code=409, detail="Task already completed")
-    contact = {"id": f"c{len(state.get('contacts', [])) + 1}", "name": payload.met_name, "how_met": task.get("title", ""), "company": payload.company, "role": payload.role, "notes": [payload.hook], "last_contact": today()}
-    state.setdefault("contacts", []).insert(0, contact)
-    task["status"] = "complete"
-    award_connection_xp(state, int(task.get("xp", 0)))
-    save_db(state)
-    return {"contact": contact, "xp_earned": int(task.get("xp", 0)), "streak": state["user"]["streak"]}
-
-
-@app.post("/api/contacts")
-def create_contact(payload: ContactCreate) -> dict[str, Any]:
-    state = load_db()
-    contact = {"id": f"c{len(state.get('contacts', [])) + 1}", **payload.model_dump(), "last_contact": today()}
-    state.setdefault("contacts", []).insert(0, contact)
-    save_db(state)
-    return contact
-
-
-@app.post("/api/reset")
-def reset() -> dict[str, Any]:
-    return reset_db()
-
-
-@app.post("/api/coach/reminders")
-def reminders() -> dict[str, list[dict[str, Any]]]:
-    state = load_db()
-    result = []
-    for contact in state.get("contacts", [])[:3]:
-        note = (contact.get("notes") or ["their recent work"])[0]
-        result.append({"contact_id": contact["id"], "headline": f"Reconnect with {contact['name']}", "reason": f"You remember {note.lower()}.", "suggested_action": "Send one specific question.", "tip": "Reference the detail they shared."})
-    return {"reminders": result}
-
-
-@app.get("/health")
-def health() -> dict[str, Any]:
-    demo_mode = os.getenv("DEMO_MODE", "1") == "1"
-    return {"ok": True, "demo_mode": demo_mode, "llm_enabled": not demo_mode and os.getenv("USE_LLM", "0") == "1" and bool(os.getenv("ANTHROPIC_API_KEY"))}
-
-
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-if FRONTEND_DIR.exists():
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index_C.html")
+    async def index():
+        index_path = settings.frontend_dir / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path)
+        return HTMLResponse('<!doctype html><meta name="viewport" content="width=device-width">'
+                            '<title>Networking Buddy backend</title><h1>Backend ready</h1>'
+                            '<p>Add the team\'s files to frontend/ to load the app.</p>'
+                            '<p><a href="/docs">Try the API</a> · <a href="/api/state">Demo state</a></p>')
 
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    app.mount("/", StaticFiles(directory=str(settings.frontend_dir), html=True, check_dir=False), name="frontend")
+    return app
+
+
+app = create_app()

@@ -1,132 +1,166 @@
+"""Replaceable AI boundary. Claude is async; offline behavior has the same port."""
+
+import asyncio
 import json
-import os
-from datetime import date
-from typing import Any
+import logging
+from collections.abc import Callable
+from typing import Protocol, TypeVar
 
-from .games import GAME_CONFIGS
+from pydantic import BaseModel, ValidationError
 
+from . import prompts
+from .demo import AIResult, DemoAI
+from .games import GameConfig
+from .models import Message, ReminderPayload, ScoreFeedback
 
-def llm_enabled() -> bool:
-    return os.getenv("USE_LLM", "0") == "1" and os.getenv("DEMO_MODE", "1") != "1" and bool(os.getenv("ANTHROPIC_API_KEY"))
-
-
-def model_name() -> str:
-    return os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
-
-
-def _history_for_claude(history: list[dict[str, Any]]) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = [{"role": "user", "content": "[The student begins the conversation.]"}]
-    for message in history[-12:]:
-        role = "assistant" if message.get("role") == "assistant" else "user"
-        content = str(message.get("content", "")).strip()
-        if not content:
-            continue
-        if messages[-1]["role"] == role:
-            messages[-1]["content"] += "\n" + content
-        else:
-            messages.append({"role": role, "content": content})
-    return messages
+logger = logging.getLogger(__name__)
+Payload = TypeVar("Payload", bound=BaseModel)
 
 
-def _context_text(context: dict[str, Any]) -> str:
-    safe_context = {
-        "user": context.get("user", {}),
-        "contacts": context.get("contacts", [])[:8],
-        "open_tasks": context.get("open_tasks", [])[:8],
-        "recent_game_sessions": context.get("recent_game_sessions", [])[:5],
-        "today": date.today().isoformat(),
-    }
-    return json.dumps(safe_context, ensure_ascii=False)[:7000]
+class NetworkingAI(Protocol):
+    async def start(self, game: GameConfig, context: dict | None = None) -> AIResult[str]: ...
+    async def turn(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[str]: ...
+    async def score(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[ScoreFeedback]: ...
+    async def reminders(self, context: dict) -> AIResult[ReminderPayload]: ...
+    async def draft(self, context: dict) -> AIResult[str]: ...
 
 
-def _text_response(response: Any) -> str:
-    blocks = getattr(response, "content", []) or []
-    return "\n".join(getattr(block, "text", "") for block in blocks if getattr(block, "type", "text") == "text").strip()
+class ProviderFailure(Exception):
+    pass
 
 
-def ask_claude(system: str, messages: list[dict[str, str]], max_tokens: int) -> str:
-    if not llm_enabled():
-        raise RuntimeError("Live Claude calls are disabled. Set USE_LLM=1 and DEMO_MODE=0 to enable them.")
-    from anthropic import Anthropic
-
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    response = client.messages.create(model=model_name(), max_tokens=max_tokens, system=system, messages=messages)
-    return _text_response(response)
+class TextTransport(Protocol):
+    async def complete(self, system: str, messages: list[dict], max_tokens: int) -> str: ...
+    async def close(self) -> None: ...
 
 
-def ask_json(system: str, messages: list[dict[str, str]], fallback: dict[str, Any], max_tokens: int) -> dict[str, Any]:
-    try:
-        text = ask_claude(system, messages, max_tokens=max_tokens)
-        cleaned = text.replace("```json", "").replace("```", "").strip()
-        value = json.loads(cleaned)
-        return value if isinstance(value, dict) else fallback
-    except Exception:
-        return fallback
+class ClaudeTransport:
+    def __init__(self, api_key: str, model: str, timeout: float):
+        # The SDK is never imported or constructed in offline mode.
+        from anthropic import APIError, AsyncAnthropic
+
+        self.api_error = APIError
+        self.client = AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=0)
+        self.model = model
+
+    async def complete(self, system: str, messages: list[dict], max_tokens: int) -> str:
+        try:
+            response = await self.client.messages.create(
+                model=self.model, max_tokens=max_tokens, system=system, messages=messages,
+            )
+        except self.api_error as exc:
+            raise ProviderFailure(type(exc).__name__) from exc
+        text = "\n".join(block.text for block in response.content if block.type == "text").strip()
+        if not text:
+            raise ProviderFailure("Empty text response")
+        return text
+
+    async def close(self) -> None:
+        await self.client.close()
 
 
-def fallback_turn(game: str, context: dict[str, Any]) -> str:
-    user = context.get("user", {})
-    role = (user.get("target_roles") or ["the kind of work you want next"])[0]
-    contacts = context.get("contacts") or []
-    if game == "coffee_chat" and contacts:
-        contact = contacts[0]
-        note = (contact.get("notes") or ["their current work"])[0]
-        return f"You are exploring {role}. What question could connect what {contact.get('name', 'someone you know')} mentioned about {note} to the work you want to understand?"
-    if game == "coffee_chat":
-        return f"Since you are exploring {role}, what part of the day-to-day work would you most like to understand?"
-    if game == "cold_call":
-        return "That is a thoughtful start. What is the smallest, clearest next step you would like to ask for?"
-    return "That gives me a useful starting point. What specific detail could make the conversation more personal?"
+def parse_json(text: str):
+    import re
 
-
-def persona_turn(game: str, history: list[dict[str, Any]], context: dict[str, Any]) -> str:
-    config = GAME_CONFIGS[game]
-    fallback = fallback_turn(game, context)
-    system = f"""You are roleplaying {config['persona']} in a networking practice game for a university student.
-Stay in character. Be friendly but realistic and respond to what the student actually said.
-Use the student context only when it creates a natural, meaningful connection. You may ask one
-specific follow-up question when appropriate. Do not invent experience, relationships, or facts.
-Never coach the student or break character. Keep the reply to 2-3 sentences.
-
-Student context:
-{_context_text(context)}"""
-    if not llm_enabled():
-        return fallback
-    return ask_claude(system, _history_for_claude(history), max_tokens=180) or fallback
-
-
-def fallback_score(game: str, context: dict[str, Any]) -> dict[str, Any]:
-    rubric = GAME_CONFIGS[game]["rubric"]
-    scores = {dimension: 3 for dimension in rubric}
-    contacts = context.get("contacts") or []
-    if contacts:
-        follow_up = f"Ask {contacts[0].get('name', 'this person')} how their experience with {(contacts[0].get('notes') or ['their work'])[0]} connects to the {((context.get('user') or {}).get('target_roles') or ['role'])[0]} you are exploring."
+    text = text.strip()
+    # First try: extract the content of a fenced code block anywhere in the text.
+    # This handles preamble like "Here is your score:\n```json\n{...}\n```".
+    match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+    if match:
+        text = match.group(1).strip()
     else:
-        follow_up = f"Ask one person how their day-to-day work connects to the {((context.get('user') or {}).get('target_roles') or ['role'])[0]} you are exploring."
-    return {
-        "scores": scores,
-        "best_moment": "You completed the practice and created a chance to improve.",
-        "one_fix": "Make your next question more specific to the person you are speaking with.",
-        "rewrite_example": "Connect your question to something the other person actually mentioned.",
-        "recommended_follow_up": follow_up,
-    }
+        # Fallback: strip stray fence markers (the build plan's approach).
+        text = text.replace("```json", "").replace("```", "").strip()
+    return json.loads(text)
 
 
-def score_game(game: str, history: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:
-    fallback = fallback_score(game, context)
-    config = GAME_CONFIGS[game]
-    system = f"""You are a practical networking coach scoring a university student's practice.
-Game: {config['title']}. Goal: {config['goal']}.
-Score each dimension from 1 to 5: {', '.join(config['rubric'])}.
-A 5 is rare. Be honest and specific. Use the student context to recommend one thoughtful follow-up
-question only when it is genuinely relevant. Never invent a contact detail.
-Return ONLY JSON with this exact shape:
-{{"scores": {{"dimension": 1}}, "best_moment": "one sentence", "one_fix": "one sentence", "rewrite_example": "one example", "recommended_follow_up": "one question"}}
+def validate_rubric(feedback: ScoreFeedback, game: GameConfig) -> None:
+    if set(feedback.scores) != set(game.rubric):
+        raise ValueError("Scores must exactly match the game's rubric")
 
-Student context:
-{_context_text(context)}"""
-    if not llm_enabled():
-        return fallback
-    result = ask_json(system, _history_for_claude(history), fallback, max_tokens=320)
-    result.setdefault("recommended_follow_up", fallback["recommended_follow_up"])
-    return result
+
+def validate_reminders(payload: ReminderPayload, context: dict) -> None:
+    valid = {c["id"] for c in context["contacts"]}
+    ids = [r.contact_id for r in payload.reminders]
+    if any(identifier not in valid for identifier in ids) or len(ids) != len(set(ids)):
+        raise ValueError("Reminders must reference distinct, existing contacts")
+    if valid and not payload.reminders and any(c["notes"] for c in context["contacts"]):
+        raise ValueError("Return at least one reminder when grounded contact notes exist")
+
+
+class ClaudeAI:
+    def __init__(self, transport: TextTransport, timeout: float = 20):
+        self.transport = transport
+        self.timeout = timeout
+        self.fallback = DemoAI()
+
+    async def _text(self, system: str, messages: list[dict], fallback: str,
+                    validate: Callable[[str], None] | None = None) -> AIResult[str]:
+        try:
+            async with asyncio.timeout(self.timeout):
+                text = await self.transport.complete(system, messages, 600)
+                if not text.strip():
+                    raise ValueError("Empty response")
+                if validate:
+                    validate(text)
+                return AIResult(text, "live")
+        except (ProviderFailure, TimeoutError, ValueError) as exc:
+            logger.warning("Using offline text fallback (%s)", type(exc).__name__)
+            return AIResult(fallback, "fallback")
+
+    async def _json(self, system: str, messages: list[dict], schema: type[Payload],
+                    fallback: Payload, validate: Callable[[Payload], None]) -> AIResult[Payload]:
+        try:
+            # A single total time budget covers both attempts.
+            async with asyncio.timeout(self.timeout):
+                for attempt in range(2):
+                    text = await self.transport.complete(system, messages, 1400)
+                    try:
+                        payload = schema.model_validate(parse_json(text))
+                        validate(payload)
+                        return AIResult(payload, "live")
+                    except (ValueError, ValidationError):
+                        if attempt:
+                            raise
+                        # Retry with instructions, without echoing potentially unsafe output.
+                        system += "\nYour last output was invalid. Return ONLY JSON matching the exact schema."
+        except (ProviderFailure, TimeoutError, ValueError, ValidationError) as exc:
+            logger.warning("Using offline JSON fallback (%s)", type(exc).__name__)
+        return AIResult(fallback, "fallback")
+
+    async def start(self, game: GameConfig, context: dict | None = None) -> AIResult[str]:
+        return await self._text(prompts.persona_prompt(game, context or {}),
+                                [{"role": "user", "content": "[The student walks up to you.]"}],
+                                (await self.fallback.start(game)).value)
+
+    async def turn(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[str]:
+        messages = [m.model_dump() for m in history]
+        if messages[0]["role"] == "assistant":
+            messages.insert(0, {"role": "user", "content": "[The student walks up to you.]"})
+        return await self._text(prompts.persona_prompt(game, context or {}), messages,
+                                (await self.fallback.turn(game, history)).value)
+
+    async def score(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[ScoreFeedback]:
+        return await self._json(
+            prompts.score_prompt(game, context or {}),
+            [{"role": "user", "content": json.dumps([m.model_dump() for m in history])}],
+            ScoreFeedback, (await self.fallback.score(game, history)).value,
+            lambda feedback: validate_rubric(feedback, game),
+        )
+
+    async def reminders(self, context: dict) -> AIResult[ReminderPayload]:
+        return await self._json(
+            prompts.REMINDERS_PROMPT, [{"role": "user", "content": json.dumps(context)}],
+            ReminderPayload, (await self.fallback.reminders(context)).value,
+            lambda payload: validate_reminders(payload, context),
+        )
+
+    async def draft(self, context: dict) -> AIResult[str]:
+        def validate(text: str):
+            if len(text.split()) >= 80 or "just checking in" in text.casefold() or "?" not in text:
+                raise ValueError("Draft must be under 80 words, specific, and contain a question")
+
+        return await self._text(
+            prompts.DRAFT_PROMPT, [{"role": "user", "content": json.dumps(context)}],
+            (await self.fallback.draft(context)).value, validate,
+        )

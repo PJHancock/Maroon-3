@@ -1,7 +1,7 @@
 """Typed API contracts and persisted records. No HTTP or Claude logic here."""
 
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -23,6 +23,7 @@ class User(Contract):
     xp: int = Field(ge=0)
     streak: int = Field(ge=0)
     last_active: date | None = None
+    today_connection_done: bool = False
 
 
 class ContactCreate(Contract):
@@ -30,6 +31,9 @@ class ContactCreate(Contract):
     how_met: OptionalText = ""
     company: OptionalText = ""
     role: OptionalText = ""
+    phone: OptionalText = ""
+    email: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
+    last_contact: date | None = None
     notes: list[NoteText] = Field(default_factory=list, max_length=50)
 
 
@@ -43,7 +47,11 @@ class Contact(ContactCreate):
 class Task(Contract):
     id: str
     title: str
-    type: Literal["in_person", "follow_up"] = "in_person"
+    description: OptionalText = ""
+    type: Literal["in_person", "event", "personal_chat", "call", "online_outreach", "follow_up"] = "in_person"
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    location: OptionalText = ""
+    event_search: bool = False
     xp: int = Field(ge=0)
     status: Literal["open", "completed"] = "open"
     completed_at: date | None = None
@@ -68,6 +76,7 @@ class Message(Contract):
 class HistoryRequest(Contract):
     history: list[Message] = Field(min_length=1, max_length=25)
     session_id: str | None = Field(default=None, min_length=1, max_length=100)
+    context: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def alternating_messages(self):
@@ -89,6 +98,7 @@ class ScoreFeedback(Contract):
     best_moment: NoteText
     one_fix: NoteText
     rewrite_example: NoteText
+    recommended_follow_up: OptionalText = ""
 
 
 class GameSession(Contract):

@@ -40,10 +40,10 @@ def normalized(text: str) -> str:
 
 
 class DemoAI:
-    async def start(self, game: GameConfig) -> AIResult[str]:
+    async def start(self, game: GameConfig, context: dict | None = None) -> AIResult[str]:
         return AIResult(game.opening, "demo")
 
-    async def turn(self, game: GameConfig, history: list[Message]) -> AIResult[str]:
+    async def turn(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[str]:
         count = sum(m.role == "user" for m in history)
         if game.title == "Coffee Chat":
             reply = COFFEE_REPLIES[min(count - 1, len(COFFEE_REPLIES) - 1)]
@@ -55,7 +55,7 @@ class DemoAI:
             reply = "Send a brief note with one relevant example and a specific question. I can take a look when I have a gap next week."
         return AIResult(reply, "demo")
 
-    async def score(self, game: GameConfig, history: list[Message]) -> AIResult[ScoreFeedback]:
+    async def score(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[ScoreFeedback]:
         lines = [m.content for m in history if m.role == "user"]
         text = " ".join(lines).casefold()
         golden = (
@@ -91,9 +91,18 @@ class DemoAI:
         else:
             fix = "Make your request specific enough to answer in a short reply."
             rewrite = "I'm a BYU CS junior practicing data engineering. Could you suggest one skill your team values most in an intern?"
+        contacts = (context or {}).get("contacts") or []
+        user = (context or {}).get("user") or {}
+        role = (user.get("target_roles") or ["the work you are exploring"])[0]
+        if contacts:
+            contact = contacts[0]
+            note = (contact.get("notes") or ["their work"])[0]
+            follow_up = f"Ask {contact.get('name', 'them')} how {note.lower()} connects to the {role} work you are exploring."
+        else:
+            follow_up = f"Ask one person what part of their day-to-day work connects to the {role} you are exploring."
         return AIResult(ScoreFeedback(
             scores=scores, best_moment=f'You gave the conversation a direction with: "{best}"',
-            one_fix=fix, rewrite_example=rewrite,
+            one_fix=fix, rewrite_example=rewrite, recommended_follow_up=follow_up,
         ), "demo")
 
     async def reminders(self, context: dict) -> AIResult[ReminderPayload]:

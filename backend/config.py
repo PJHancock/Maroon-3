@@ -45,12 +45,14 @@ class Settings:
 def get_settings() -> Settings:
     from dotenv import load_dotenv
 
+    load_dotenv(BACKEND_DIR.parent / ".env", override=False)
     load_dotenv(BACKEND_DIR / ".env", override=False)
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     demo = env_bool("DEMO_MODE", not bool(api_key))
     raw_date = os.getenv("DEMO_DATE", "2026-10-02").strip()
+    configured_db = os.getenv("DB_PATH", "").strip() or os.getenv("NETWORKING_BUDDY_DB", "").strip()
     return Settings(
-        db_path=Path(os.getenv("DB_PATH", str(BACKEND_DIR / "db.json"))).resolve(),
+        db_path=Path(configured_db or str(BACKEND_DIR / "db.json")).resolve(),
         frontend_dir=Path(os.getenv("FRONTEND_DIR", str(BACKEND_DIR.parent / "frontend"))).resolve(),
         demo_mode=demo,
         demo_date=date.fromisoformat(raw_date) if demo and raw_date else None,

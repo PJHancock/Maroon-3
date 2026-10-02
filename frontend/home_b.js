@@ -88,15 +88,32 @@ export function renderCoachError(message) {
     <button class="btn btn-small" data-action="refresh-coach">Try again</button></div>`;
 }
 
+const TASK_PRIORITY = {
+  in_person: { label: "In person", icon: "🤝", priority: 0, realWorld: true },
+  event: { label: "Nearby event", icon: "📍", priority: 1, realWorld: true },
+  personal_chat: { label: "Personal chat", icon: "☕", priority: 2, realWorld: true },
+  call: { label: "Make a call", icon: "📞", priority: 3 },
+  online_outreach: { label: "Reach out online", icon: "💬", priority: 4 },
+  follow_up: { label: "Follow up", icon: "✉️", priority: 5 },
+};
+
 export function renderTasks(tasks) {
-  const open = (Array.isArray(tasks) ? tasks : []).filter((t) => (t.status ?? "open") === "open");
-  if (!open.length) return `<div class="empty">All tasks done. Nice work!</div>`;
-  return open.map((t) => `
-    <a class="card task-card" href="#/task/${encodeURIComponent(t.id)}">
-      <span class="task-icon">${t.type === "in_person" ? "🤝" : "✅"}</span>
-      <span class="task-title">${esc(t.title)}</span>
-      <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
-    </a>`).join("");
+  const open = (Array.isArray(tasks) ? tasks : [])
+    .filter((t) => (t.status ?? "open") === "open")
+    .sort((a, b) => (TASK_PRIORITY[a.type]?.priority ?? 6) - (TASK_PRIORITY[b.type]?.priority ?? 6)
+      || (Number(b.xp) || 0) - (Number(a.xp) || 0));
+  if (!open.length) return `<div class="empty">All tasks done. Your connection habit is strong!</div>`;
+  return open.map((t) => {
+    const meta = TASK_PRIORITY[t.type] ?? { label: "Connection", icon: "✅", priority: 6 };
+    const realWorld = Boolean(meta.realWorld);
+    const difficulty = String(t.difficulty ?? "medium").replace(/^./, (c) => c.toUpperCase());
+    return `
+      <a class="card task-card ${realWorld ? "task-card--priority" : ""}" href="#/task/${encodeURIComponent(t.id)}">
+        <span class="task-icon">${meta.icon}</span>
+        <span class="task-title"><small>${esc(meta.label)} · ${esc(difficulty)}</small><strong>${esc(t.title)}</strong>${t.description ? `<em>${esc(t.description)}</em>` : ""}${t.location ? `<em>${esc(t.location)}</em>` : ""}</span>
+        <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
+      </a>`;
+  }).join("");
 }
 
 export function renderGamePicker(games = GAMES) {
@@ -131,8 +148,8 @@ export function renderHome(state, { debug = false } = {}) {
         <button class="btn btn-small btn-ghost" data-action="refresh-coach">↻ Refresh</button></div>
       <div id="coach-cards">${renderCoachLoading()}</div>
     </section>
-    <section class="block"><h2>In-person tasks</h2>${renderTasks(state.tasks)}</section>
-    <section class="block"><h2>Practice</h2>${renderGamePicker()}</section>`;
+    <section class="block"><h2>Today's connection plan</h2><p class="muted">Real-world connections come first. Choose the next step that fits your day.</p>${renderTasks(state.tasks)}</section>
+    <section class="block practice-block"><div class="block-head"><h2>Optional practice</h2><span class="xp-pill">Side quest</span></div>${renderGamePicker()}</section>`;
 }
 
 // Drafts may come back as a string or as {message|draft|text}.

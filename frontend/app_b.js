@@ -94,7 +94,9 @@ export async function api(path, { method, body } = {}) {
     }
   }
   if (!resp.ok) {
-    const detail = data?.detail ?? resp.statusText;
+    const detail = Array.isArray(data?.detail)
+      ? data.detail.map((issue) => issue.msg || issue.message || String(issue)).join("; ")
+      : data?.detail ?? resp.statusText;
     throw new ApiError(`${method} ${path} failed: ${detail}`, resp.status);
   }
   return data;
