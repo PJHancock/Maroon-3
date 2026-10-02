@@ -234,3 +234,24 @@ button.card:active, a.card:active { transform: translateY(2px); box-shadow: 0 1p
   *, *::before, *::after { animation-duration: 0.01ms !important; transition: none !important; }
   .celebrate-xp, .celebrate-streak { animation: none !important; } /* show it static instead */
 }
+
+/* Onboarding */
+.onboarding { text-align: center; padding: 2rem 0; }
+.onboarding h1 { margin-bottom: 0.25rem; }
+.onboarding-choices { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem; }
+.onboarding-card { text-align: left; cursor: pointer; transition: border-color 0.15s; }
+.onboarding-card:hover { border-color: var(--brand); }
+.onboarding-icon { font-size: 1.5rem; }
+.onboarding-detail { padding: 1rem 0; }
+.onboarding-form .field { margin-bottom: 1rem; }
+
+/* Suggestion sheet (replaces draft) */
+.suggestion-list { padding-left: 1.25rem; margin: 0.75rem 0; }
+.suggestion-list li { margin-bottom: 0.5rem; line-height: 1.4; }
+
+/* Proposed tasks */
+.proposal-card { padding: 0.75rem 1rem; }
+.proposal-header { display: flex; align-items: flex-start; gap: 0.5rem; }
+.proposal-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
+.frequency-select { font: inherit; font-size: 0.85rem; padding: 0.25rem 0.5rem; border: 1px solid #ccc; border-radius: 8px; background: white; }
+.skill-badge { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 6px; background: var(--brand-soft, #e9f9d8); color: var(--brand-dark, #46a302); margin-left: 0.25rem; vertical-align: middle; }

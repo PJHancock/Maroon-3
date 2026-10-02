@@ -160,3 +160,72 @@ class DemoAI:
             hook = " ".join(hook.split()[:25])
             body = f'I made a note from our conversation: "{hook}". What would be a useful small next step to learn more about that?'
         return AIResult(f"Hi {name}, {body} — {student}", "demo")
+
+    async def suggest(self, context: dict) -> AIResult[list[str]]:
+        contact = context["contact"]
+        name = contact["name"].split()[0]
+        notes = " ".join(contact["notes"]).casefold()
+        suggestions = []
+        if "dbt" in notes:
+            suggestions.append(f"Ask {name} what the biggest challenge in their dbt migration has been")
+            suggestions.append(f"Ask what kind of dbt tests they've found most valuable")
+        elif "grant" in notes:
+            suggestions.append(f"Ask {name} how the grant submission went")
+            suggestions.append(f"Ask if there's a way you could help with the lab website")
+        else:
+            hook = (contact["notes"][-1] if contact["notes"] else "their work")[:100]
+            suggestions.append(f"Ask {name} more about {hook.lower()}")
+            suggestions.append(f"Ask what they're working on this week")
+        role = (context["user"].get("target_roles") or ["your field"])[0]
+        suggestions.append(f"Ask how their experience connects to {role}")
+        return AIResult(suggestions[:3], "demo")
+
+    async def propose_tasks(self, context: dict) -> AIResult[list[dict]]:
+        user = context["user"]
+        contacts = context.get("contacts", [])
+        tasks = []
+        roles = user.get("target_roles", ["your target role"])
+        role = roles[0] if roles else "your target role"
+        # Always suggest a weekly outreach task
+        tasks.append({
+            "title": "Reach out to one new person this week",
+            "description": f"Find someone working in {role} and send a specific, low-pressure question.",
+            "type": "online_outreach", "difficulty": "easy", "xp": 35,
+            "frequency": "weekly", "skill": "outreach",
+        })
+        # Suggest follow-ups for recent contacts
+        for c in contacts[:2]:
+            if c.get("notes"):
+                tasks.append({
+                    "title": f"Follow up with {c['name']}",
+                    "description": f"Reconnect about: {c['notes'][-1][:120]}",
+                    "type": "follow_up", "difficulty": "easy", "xp": 40,
+                    "frequency": "once", "skill": "follow up",
+                    "contact_id": c["id"],
+                })
+        # Suggest skill-building
+        averages = context.get("score_averages", {})
+        if averages:
+            weak = min(averages, key=averages.get)
+            if averages[weak] < 3:
+                tasks.append({
+                    "title": f"Practice {weak.replace('_', ' ')} in a conversation",
+                    "description": f"Your {weak.replace('_', ' ')} scores are low. Focus on this in your next interaction.",
+                    "type": "personal_chat", "difficulty": "medium", "xp": 45,
+                    "frequency": "weekly", "skill": weak.replace("_", " "),
+                })
+        # Suggest an event
+        tasks.append({
+            "title": "Attend a networking event or meetup",
+            "description": f"Find a {role}-related event and talk to at least one person there.",
+            "type": "event", "difficulty": "hard", "xp": 80,
+            "frequency": "once", "skill": "events",
+        })
+        # Suggest informational interview
+        tasks.append({
+            "title": "Schedule an informational interview",
+            "description": "Invite someone in your target field to a 15-minute conversation about their work.",
+            "type": "personal_chat", "difficulty": "medium", "xp": 60,
+            "frequency": "once", "skill": "informational interview",
+        })
+        return AIResult(tasks[:5], "demo")

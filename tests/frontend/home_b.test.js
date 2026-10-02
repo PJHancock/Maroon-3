@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
-  renderDraftSheet, loadReminders, _resetCoachCache,
+  renderSuggestionSheet, loadReminders, _resetCoachCache,
 } from "../../frontend/home_b.js";
 import { setMockMode, normalizeState } from "../../frontend/app_b.js";
 import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
@@ -122,11 +122,11 @@ test("normalizeDraft accepts several response shapes", () => {
   assert.equal(normalizeDraft(null), "");
 });
 
-test("renderDraftSheet escapes the draft inside the textarea", () => {
-  const html = renderDraftSheet({ contact: { name: "Sarah" }, reason: "R" }, "</textarea><b>x");
-  assert.match(html, /Message to Sarah/);
-  assert.match(html, /&lt;\/textarea&gt;/);
-  assert.match(html, /data-action="copy-draft"/);
+test("renderSuggestionSheet escapes the suggestions inside the list", () => {
+  const html = renderSuggestionSheet({ contact: { name: "Sarah" }, reason: "R" }, ["<script>bad</script>"]);
+  assert.match(html, /Suggestions for Sarah/);
+  assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(html, /data-action="reached-out"/);
 });
 
 test("loadReminders caches until forced", async () => {

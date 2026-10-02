@@ -23,6 +23,8 @@ class NetworkingAI(Protocol):
     async def score(self, game: GameConfig, history: list[Message], context: dict | None = None) -> AIResult[ScoreFeedback]: ...
     async def reminders(self, context: dict) -> AIResult[ReminderPayload]: ...
     async def draft(self, context: dict) -> AIResult[str]: ...
+    async def suggest(self, context: dict) -> AIResult[list[str]]: ...
+    async def propose_tasks(self, context: dict) -> AIResult[list[dict]]: ...
 
 
 class ProviderFailure(Exception):
@@ -164,3 +166,38 @@ class ClaudeAI:
             prompts.DRAFT_PROMPT, [{"role": "user", "content": json.dumps(context)}],
             (await self.fallback.draft(context)).value, validate,
         )
+
+    async def suggest(self, context: dict) -> AIResult[list[str]]:
+        def validate(text: str):
+            items = parse_json(text)
+            if not isinstance(items, list) or not all(isinstance(s, str) for s in items):
+                raise ValueError("Must be a JSON array of strings")
+            if len(items) < 2 or len(items) > 3:
+                raise ValueError("Need 2-3 suggestions")
+
+        try:
+            async with asyncio.timeout(self.timeout):
+                text = await self.transport.complete(prompts.SUGGEST_PROMPT,
+                    [{"role": "user", "content": json.dumps(context)}], 600)
+                validate(text)
+                return AIResult(parse_json(text), "live")
+        except (ProviderFailure, TimeoutError, ValueError) as exc:
+            logger.warning("Using offline suggest fallback (%s)", type(exc).__name__)
+            return await self.fallback.suggest(context)
+
+    async def propose_tasks(self, context: dict) -> AIResult[list[dict]]:
+        try:
+            async with asyncio.timeout(self.timeout):
+                text = await self.transport.complete(
+                    "You are a networking coach. Given this student context, propose 3-5 networking tasks. "
+                    "Each task should build a specific networking skill. Return ONLY a JSON array of objects, "
+                    "each with: title, description, type (in_person|event|personal_chat|call|online_outreach|follow_up), "
+                    "difficulty (easy|medium|hard), xp (30-100), frequency (once|daily|weekly), skill (short label).",
+                    [{"role": "user", "content": json.dumps(context)}], 1400)
+                items = parse_json(text)
+                if not isinstance(items, list):
+                    raise ValueError("Must be a JSON array")
+                return AIResult(items, "live")
+        except (ProviderFailure, TimeoutError, ValueError) as exc:
+            logger.warning("Using offline propose_tasks fallback (%s)", type(exc).__name__)
+            return await self.fallback.propose_tasks(context)

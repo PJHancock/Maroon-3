@@ -24,6 +24,7 @@ class User(Contract):
     streak: int = Field(ge=0)
     last_active: date | None = None
     today_connection_done: bool = False
+    onboarding_goal: Literal["job", "company", "general"] | None = None
 
 
 class ContactCreate(Contract):
@@ -56,6 +57,8 @@ class Task(Contract):
     status: Literal["open", "completed"] = "open"
     completed_at: date | None = None
     contact_id: str | None = None
+    frequency: Literal["once", "daily", "weekly"] = "once"
+    skill: OptionalText = ""
     reflection: dict[str, str] | None = None
 
 
@@ -122,6 +125,7 @@ class Database(Contract):
     user: User
     contacts: list[Contact] = Field(default_factory=list)
     tasks: list[Task] = Field(default_factory=list)
+    proposed_tasks: list[Task] = Field(default_factory=list)
     game_sessions: list[GameSession] = Field(default_factory=list)
     active_sessions: dict[str, ActiveSession] = Field(default_factory=dict)
 
@@ -139,6 +143,7 @@ class StateResponse(Contract):
     user: User
     contacts: list[Contact]
     tasks: list[Task]
+    proposed_tasks: list[Task] = Field(default_factory=list)
     game_sessions: list[GameSession]
     games: list[GameInfo]
     today: date
@@ -203,3 +208,24 @@ class DraftResponse(Contract):
     draft: str
     contact_id: str
     source: Source
+
+
+class OnboardingRequest(Contract):
+    goal: Literal["job", "company", "general"]
+    target_company: OptionalText = ""
+    target_role: OptionalText = ""
+
+
+class SuggestionsResponse(Contract):
+    suggestions: list[NoteText]
+    contact_id: str
+    source: Source
+
+
+class TaskProposalResponse(Contract):
+    proposed_tasks: list[Task]
+    source: Source
+
+
+class TaskAcceptRequest(Contract):
+    frequency: Literal["once", "daily", "weekly"] = "once"

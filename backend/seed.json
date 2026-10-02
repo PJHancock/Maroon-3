@@ -7,7 +7,8 @@
     "xp": 340,
     "streak": 4,
     "last_active": "2026-10-01",
-    "today_connection_done": false
+    "today_connection_done": false,
+    "onboarding_goal": "general"
   },
   "contacts": [
     {
@@ -47,6 +48,7 @@
       "difficulty": "medium",
       "location": "Real-world connection",
       "xp": 75,
+      "skill": "events",
       "status": "open"
     },
     {
@@ -57,6 +59,7 @@
       "difficulty": "medium",
       "location": "Coffee, walk, or video chat",
       "xp": 60,
+      "skill": "informational interview",
       "status": "open"
     },
     {
@@ -67,6 +70,7 @@
       "difficulty": "easy",
       "location": "LinkedIn or community forum",
       "xp": 30,
+      "skill": "outreach",
       "status": "open"
     },
     {
@@ -77,6 +81,7 @@
       "difficulty": "medium",
       "location": "Phone call",
       "xp": 45,
+      "skill": "outreach",
       "status": "open"
     },
     {
@@ -88,6 +93,7 @@
       "location": "Nearby event · AI search later",
       "event_search": true,
       "xp": 100,
+      "skill": "events",
       "status": "open"
     },
     {
@@ -99,6 +105,7 @@
       "location": "Message or email",
       "contact_id": "c2",
       "xp": 40,
+      "skill": "follow up",
       "status": "open"
     }
   ],
