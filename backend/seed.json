@@ -18,6 +18,24 @@
       "role": "Research scientist",
       "notes": ["Grant deadline mid-October", "Lab website is outdated"],
       "last_contact": "2026-09-10"
+    },
+    {
+      "id": "c2",
+      "name": "Priya",
+      "how_met": "TA for CS 452",
+      "company": "BYU",
+      "role": "Graduate TA",
+      "notes": ["Interned at Domo on the data platform team", "Recommended learning Airflow"],
+      "last_contact": "2026-09-22"
+    },
+    {
+      "id": "c3",
+      "name": "Jordan",
+      "how_met": "Career fair",
+      "company": "Pluralsight",
+      "role": "Analytics engineer",
+      "notes": ["Hiring summer interns in January", "Likes hiking in American Fork Canyon"],
+      "last_contact": "2026-09-18"
     }
   ],
   "tasks": [

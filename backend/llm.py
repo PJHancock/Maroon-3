@@ -64,24 +64,31 @@ def ask_json(system: str, messages: list[dict[str, str]], fallback: dict[str, An
         return fallback
 
 
-def fallback_turn(game: str, context: dict[str, Any]) -> str:
-    user = context.get("user", {})
-    role = (user.get("target_roles") or ["the kind of work you want next"])[0]
-    contacts = context.get("contacts") or []
-    if game == "coffee_chat" and contacts:
-        contact = contacts[0]
-        note = (contact.get("notes") or ["their current work"])[0]
-        return f"You are exploring {role}. What question could connect what {contact.get('name', 'someone you know')} mentioned about {note} to the work you want to understand?"
-    if game == "coffee_chat":
-        return f"Since you are exploring {role}, what part of the day-to-day work would you most like to understand?"
-    if game == "cold_call":
-        return "That is a thoughtful start. What is the smallest, clearest next step you would like to ask for?"
-    return "That gives me a useful starting point. What specific detail could make the conversation more personal?"
+# In-character canned replies for when Claude is off, one per student turn.
+FALLBACK_REPLIES = {
+    "coffee_chat": [
+        "Honestly, a normal week is half building pipelines and half figuring out why a number looks wrong. Our team is also in the middle of moving our transformations to dbt. What got you interested in data work?",
+        "That makes sense. The dbt migration has been the most interesting part lately, since it forces us to agree on what each metric actually means. Have you worked with SQL models before?",
+        "Nice, that's a good foundation. If you want to try something small, build a couple of dbt models on a public dataset. I'd be happy to take a look if you send it over.",
+        "I should head back soon, but this was fun. Feel free to reach out once you've tried it.",
+    ],
+    "cold_call": [
+        "Okay, you have my attention for a minute. What exactly are you hoping I can help with?",
+        "I can probably do that. Send me a short email with the one question you want answered and I'll reply this week.",
+        "Sounds good. Keep it short and I'll take a look.",
+    ],
+}
+
+
+def fallback_turn(game: str, history: list[dict[str, Any]], context: dict[str, Any]) -> str:
+    replies = FALLBACK_REPLIES.get(game, ["Thanks, that's helpful. Tell me a little more about that."])
+    student_turns = sum(1 for message in history if message.get("role") == "user")
+    return replies[min(max(student_turns - 1, 0), len(replies) - 1)]
 
 
 def persona_turn(game: str, history: list[dict[str, Any]], context: dict[str, Any]) -> str:
     config = GAME_CONFIGS[game]
-    fallback = fallback_turn(game, context)
+    fallback = fallback_turn(game, history, context)
     system = f"""You are roleplaying {config['persona']} in a networking practice game for a university student.
 Stay in character. Be friendly but realistic and respond to what the student actually said.
 Use the student context only when it creates a natural, meaningful connection. You may ask one
@@ -99,10 +106,14 @@ def fallback_score(game: str, context: dict[str, Any]) -> dict[str, Any]:
     rubric = GAME_CONFIGS[game]["rubric"]
     scores = {dimension: 3 for dimension in rubric}
     contacts = context.get("contacts") or []
+    roles = (context.get("user") or {}).get("target_roles") or []
+    goal = f"the {roles[0]} roles you are exploring" if roles else "the jobs you are exploring"
     if contacts:
-        follow_up = f"Ask {contacts[0].get('name', 'this person')} how their experience with {(contacts[0].get('notes') or ['their work'])[0]} connects to the {((context.get('user') or {}).get('target_roles') or ['role'])[0]} you are exploring."
+        name = contacts[0].get("name", "a contact")
+        note = (contacts[0].get("notes") or ["their work"])[0]
+        follow_up = f'Next time you talk with {name}, ask a follow-up about "{note}" and how it relates to {goal}.'
     else:
-        follow_up = f"Ask one person how their day-to-day work connects to the {((context.get('user') or {}).get('target_roles') or ['role'])[0]} you are exploring."
+        follow_up = f"Ask someone you know what a normal week looks like in their job, and how it compares to {goal}."
     return {
         "scores": scores,
         "best_moment": "You completed the practice and created a chance to improve.",
@@ -110,6 +121,29 @@ def fallback_score(game: str, context: dict[str, Any]) -> dict[str, Any]:
         "rewrite_example": "Connect your question to something the other person actually mentioned.",
         "recommended_follow_up": follow_up,
     }
+
+
+def fallback_draft(contact: dict[str, Any], reason: str) -> str:
+    name = contact.get("name") or "there"
+    note = (contact.get("notes") or ["what you're working on"])[0]
+    note = note[0].lower() + note[1:] if note else note
+    return (f"Hi {name}! I've been thinking about what you mentioned about {note}. "
+            "I'd love to hear how it's going. Would you be open to a quick coffee sometime next week?")
+
+
+def draft_message(contact: dict[str, Any], reason: str, user: dict[str, Any]) -> str:
+    fallback = fallback_draft(contact, reason)
+    if not llm_enabled():
+        return fallback
+    system = """Write a short message from the student to this contact. Under 80 words,
+friendly and professional, specific to their notes and the reason given.
+End with one easy, low-pressure question. Never write "just checking in."
+Return only the message text."""
+    context = json.dumps({"student": user, "contact": contact, "reason": reason}, ensure_ascii=False)[:4000]
+    try:
+        return ask_claude(system, [{"role": "user", "content": context}], max_tokens=250) or fallback
+    except Exception:
+        return fallback
 
 
 def score_game(game: str, history: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:

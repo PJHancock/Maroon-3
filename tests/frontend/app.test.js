@@ -4,8 +4,8 @@ import {
   parseRoute, esc, daysSince, todayISO, normalizeState, computeCelebration,
   api, post, ApiError, setMockMode, registerScreen, getScreen, celebrate, _setState, getState,
   applyDebugXp, isDebugMode,
-} from "../../frontend/app_b.js";
-import { resetMock, setMockDelay } from "../../frontend/mock_b.js";
+} from "../../frontend/app.js";
+import { resetMock, setMockDelay } from "../../frontend/mock.js";
 
 const realFetch = globalThis.fetch;
 
@@ -42,7 +42,7 @@ test("parseRoute: screens with and without ids", () => {
   assert.deepEqual(parseRoute("#/contacts"), { name: "contacts", id: null });
   assert.deepEqual(parseRoute("#/game/coffee_chat"), { name: "game", id: "coffee_chat" });
   assert.deepEqual(parseRoute("#/task/t1"), { name: "task", id: "t1" });
-  assert.deepEqual(parseRoute("#/score"), { name: "score", id: null });
+  assert.deepEqual(parseRoute("#/score"), { name: "home", id: null }, "score lives inside the game screen");
 });
 
 test("parseRoute: tolerant of missing slash, trailing slash, query, encoding", () => {
@@ -56,8 +56,8 @@ test("parseRoute: unknown screens fall back to home", () => {
 
 test("registerScreen stores screens for the router", () => {
   const screen = { show() {} };
-  registerScreen("score", screen);
-  assert.equal(getScreen("score"), screen);
+  registerScreen("task", screen);
+  assert.equal(getScreen("task"), screen);
 });
 
 // ---------- utilities ----------

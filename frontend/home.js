@@ -1,19 +1,13 @@
-// home_b.js — streak, XP, coach cards, draft sheet, task list, game picker.
-// Owner: Teammate B. Render functions are pure (data -> HTML) so they're unit-tested.
+// home.js — streak, XP, coach cards, draft sheet, task list, game picker.
+// Render functions are pure (data -> HTML) so they're unit-tested.
 
 import {
   registerScreen, getState, refreshState, post, esc,
   openSheet, closeSheet, copyText, toast,
   isDebugMode, applyDebugXp, showCelebration, _setState,
-} from "./app_b.js";
-
-// Mirrors GAME_CONFIGS in backend/games.py (title + XP only).
-export const GAMES = [
-  { id: "elevator_pitch", title: "Elevator Pitch", xp: 10, icon: "🎤", blurb: "30 seconds to make an impression" },
-  { id: "coffee_chat", title: "Coffee Chat", xp: 15, icon: "☕", blurb: "Learn about their work" },
-  { id: "follow_up", title: "Follow-Up", xp: 10, icon: "✉️", blurb: "Give them a reason to reply" },
-  { id: "cold_call", title: "Cold Outreach", xp: 20, icon: "📞", blurb: "Earn a reply from a stranger" },
-];
+} from "./app.js";
+import { GAMES } from "./game.js";
+import { taskMeta, difficultyLabel, openTasks } from "./tasks.js";
 
 export const XP_PER_LEVEL = 100;
 
@@ -88,15 +82,41 @@ export function renderCoachError(message) {
     <button class="btn btn-small" data-action="refresh-coach">Try again</button></div>`;
 }
 
-export function renderTasks(tasks) {
-  const open = (Array.isArray(tasks) ? tasks : []).filter((t) => (t.status ?? "open") === "open");
-  if (!open.length) return `<div class="empty">All tasks done. Nice work!</div>`;
-  return open.map((t) => `
+export function renderTaskCard(t) {
+  const meta = taskMeta(t);
+  return `
     <a class="card task-card" href="#/task/${encodeURIComponent(t.id)}">
-      <span class="task-icon">${t.type === "in_person" ? "🤝" : "✅"}</span>
-      <span class="task-title">${esc(t.title)}</span>
+      <span class="task-icon">${meta.icon}</span>
+      <span class="task-body">
+        <span class="task-meta">${esc(meta.label)} · ${esc(difficultyLabel(t))}</span>
+        <span class="task-title">${esc(t.title)}</span>
+        ${t.description ? `<small class="task-desc">${esc(t.description)}</small>` : ""}
+        ${t.location ? `<small class="task-where">📌 ${esc(t.location)}</small>` : ""}
+      </span>
       <span class="xp-pill">+${Number(t.xp) || 0} XP</span>
-    </a>`).join("");
+    </a>`;
+}
+
+// Only real-world tasks count toward the streak (games just give XP).
+export function renderDailyGoal(user) {
+  const done = Boolean(user?.today_connection_done);
+  return `
+    <div class="daily-goal${done ? " done" : ""}">
+      <span>${done ? "✅ You made a real connection today" : "🎯 One real-world connection keeps your streak alive"}</span>
+      <strong>${done ? "1" : "0"}/1</strong>
+    </div>`;
+}
+
+export function renderTasks(tasks, user) {
+  const open = openTasks(tasks);
+  const goal = user ? renderDailyGoal(user) : "";
+  if (!open.length) return `${goal}<div class="empty">All tasks done. Nice work!</div>`;
+  const [next, ...rest] = open;
+  return `
+    ${goal}
+    <p class="next-move">Best next move</p>
+    <div class="next-task">${renderTaskCard(next)}</div>
+    ${rest.map(renderTaskCard).join("")}`;
 }
 
 export function renderGamePicker(games = GAMES) {
@@ -131,7 +151,7 @@ export function renderHome(state, { debug = false } = {}) {
         <button class="btn btn-small btn-ghost" data-action="refresh-coach">↻ Refresh</button></div>
       <div id="coach-cards">${renderCoachLoading()}</div>
     </section>
-    <section class="block"><h2>In-person tasks</h2>${renderTasks(state.tasks)}</section>
+    <section class="block" id="tasks"><h2>Today's connections</h2>${renderTasks(state.tasks, state.user)}</section>
     <section class="block"><h2>Practice</h2>${renderGamePicker()}</section>`;
 }
 
@@ -232,7 +252,7 @@ async function openDraft(reminder) {
 }
 
 registerScreen("home", {
-  async show({ el }) {
+  async show({ el }, data) {
     // /api/state is a local file read, so always fetch fresh XP and tasks;
     // fall back to the cache if the server hiccups.
     let state;
@@ -249,5 +269,6 @@ registerScreen("home", {
       if (dbg) debugXp(el, Number(dbg.dataset.debugXp), dbg.hasAttribute("data-debug-streak"));
     };
     showCoach(el, false);
+    if (data?.scrollTo) el.querySelector(`#${data.scrollTo}`)?.scrollIntoView({ block: "start" });
   },
 });

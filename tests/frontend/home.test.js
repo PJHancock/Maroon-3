@@ -1,12 +1,15 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  GAMES, xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
+  xpProgress, renderStats, renderGreeting, joinReminders, renderCoachCards,
   renderCoachError, renderTasks, renderGamePicker, renderHome, normalizeDraft,
   renderDraftSheet, loadReminders, _resetCoachCache,
-} from "../../frontend/home_b.js";
-import { setMockMode, normalizeState } from "../../frontend/app_b.js";
-import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock_b.js";
+  renderTaskCard, renderDailyGoal,
+} from "../../frontend/home.js";
+import { GAMES } from "../../frontend/game.js";
+import { openTasks, taskMeta, difficultyLabel } from "../../frontend/tasks.js";
+import { setMockMode, normalizeState } from "../../frontend/app.js";
+import { SEED, resetMock, setMockDelay, MOCK_GAMES } from "../../frontend/mock.js";
 
 const contacts = SEED.contacts;
 
@@ -85,6 +88,45 @@ test("renderTasks links open tasks to the task screen and hides done ones", () =
   assert.match(renderTasks([]), /All tasks done/);
 });
 
+test("openTasks puts real-world tasks first, then higher XP", () => {
+  const order = openTasks(SEED.tasks).map((t) => t.id);
+  assert.deepEqual(order, ["t1", "t5", "t2", "t4", "t3", "t6"]);
+  assert.deepEqual(openTasks([{ id: "a", type: "mystery", xp: 5 }, { id: "b", type: "call", xp: 1 }]).map((t) => t.id), ["b", "a"]);
+  assert.deepEqual(openTasks([{ id: "x", status: "complete" }]), []);
+});
+
+test("renderTaskCard shows type, difficulty, description, location, and XP", () => {
+  const html = renderTaskCard(SEED.tasks.find((t) => t.id === "t5"));
+  assert.match(html, /href="#\/task\/t5"/);
+  assert.match(html, /📍/);
+  assert.match(html, /Nearby event · Hard/);
+  assert.match(html, /hack night/);
+  assert.match(html, /Nearby event · AI search later/);
+  assert.match(html, /\+100 XP/);
+});
+
+test("renderTaskCard copes with a bare task", () => {
+  const html = renderTaskCard({ id: "z", title: "<b>Do it</b>" });
+  assert.match(html, /Connection · Medium/);
+  assert.match(html, /&lt;b&gt;Do it/);
+  assert.doesNotMatch(html, /task-desc|task-where/);
+  assert.equal(taskMeta(undefined).label, "Connection");
+  assert.equal(difficultyLabel({ difficulty: "easy" }), "Easy");
+});
+
+test("renderTasks highlights the best next move and shows the daily goal", () => {
+  const html = renderTasks(SEED.tasks, SEED.user);
+  assert.match(html, /Best next move/);
+  assert.match(html, /<div class="next-task">[\s\S]*Qualtrics[\s\S]*<\/div>/);
+  assert.match(html, /0<\/strong>\/1|0\/1/);
+  assert.match(renderTasks(SEED.tasks, { ...SEED.user, today_connection_done: true }), /daily-goal done/);
+});
+
+test("renderDailyGoal reflects today_connection_done", () => {
+  assert.match(renderDailyGoal({ today_connection_done: false }), /0\/1/);
+  assert.match(renderDailyGoal({ today_connection_done: true }), /1\/1/);
+});
+
 test("renderGamePicker links all four games to the game screen", () => {
   const html = renderGamePicker();
   for (const g of GAMES) assert.match(html, new RegExp(`href="#/game/${g.id}"`));
@@ -133,7 +175,7 @@ test("loadReminders caches until forced", async () => {
   const first = await loadReminders();
   assert.equal(first[0].contact_id, "c1");
   // A task completion adds Marcus; the cache shouldn't change until a refresh.
-  const { post } = await import("../../frontend/app_b.js");
+  const { post } = await import("../../frontend/app.js");
   await post("/api/tasks/t1/complete", { met_name: "Marcus", role: "Data engineer", company: "Qualtrics", hook: "Team moving to dbt" });
   assert.equal((await loadReminders()).length, 1);
   const fresh = await loadReminders({ force: true });

@@ -1,7 +1,7 @@
-// app_b.js — shared shell: hash router, api() helper, state cache, and UI helpers.
-// Owner: Teammate B. Other screens import from here; this is the contract:
+// app.js — the shared core: hash router, api() helper, state cache, and UI helpers.
+// Every screen module (home, contacts, game, tasks) imports from here:
 //
-//   registerScreen(name, { show(params, data) })  render into <section id="screen-{name}">
+//   registerScreen(name, { show({ id, el }, data) })  render into <section id="screen-{name}">
 //   navigate(route, data)                          go to "#/game/coffee_chat", passing optional data
 //   api(path, { method, body })  / post(path, body)
 //   getState() / refreshState()                    cached GET /api/state
@@ -11,7 +11,7 @@
 //
 // Nothing here touches the DOM at import time, so Node tests can import it.
 
-import { mockApi } from "./mock_b.js";
+import { mockApi } from "./mock.js";
 
 // ---------- small utilities ----------
 
@@ -143,7 +143,7 @@ export function _setState(s) {
 
 // ---------- router ----------
 
-export const SCREENS = ["home", "contacts", "game", "score", "task"];
+export const SCREENS = ["home", "contacts", "game", "task"];
 
 const screens = {};
 let started = false;
@@ -198,13 +198,14 @@ async function render() {
     if (el) el.innerHTML = `<div class="empty">This screen isn't built yet.</div>`;
     return;
   }
+  // Scroll first so a screen can scroll somewhere else itself (e.g. home's task list).
+  window.scrollTo(0, 0);
   try {
     await screen.show({ id: route.id, el }, data);
   } catch (err) {
     console.error(err);
     if (el) el.innerHTML = `<div class="error-box">Something went wrong: ${esc(err.message)}</div>`;
   }
-  window.scrollTo(0, 0);
 }
 
 // ---------- UI helpers ----------

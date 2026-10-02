@@ -1,7 +1,7 @@
-// contacts_b.js — contact log with search and an add-contact form.
-// Owner: Teammate B. Render, search, and validation functions are pure and unit-tested.
+// contacts.js — contact log with search and an add-contact form.
+// Render, search, and validation functions are pure and unit-tested.
 
-import { registerScreen, getState, refreshState, post, esc, daysSince, todayISO, toast } from "./app_b.js";
+import { registerScreen, getState, refreshState, post, esc, daysSince, todayISO, toast } from "./app.js";
 
 export function lastContactLabel(isoDate, today) {
   const d = daysSince(isoDate, today);

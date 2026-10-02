@@ -7,20 +7,18 @@
   <meta name="theme-color" content="#58CC02">
   <title>Networking Buddy</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles_b.css">
-  <link rel="stylesheet" href="/styles_c.css">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main id="app">
-    <!-- Each screen fills its own section from JS. Don't put markup inside them. -->
-    <section id="screen-home" hidden></section>      <!-- home_b.js     (B) -->
-    <section id="screen-contacts" hidden></section>  <!-- contacts_b.js (B) -->
-    <section id="screen-game" hidden></section>      <!-- game.js     (C) -->
-    <section id="screen-score" hidden></section>     <!-- game.js     (C) -->
-    <section id="screen-task" hidden></section>      <!-- tasks.js    (C) -->
+    <!-- Each screen module fills its own section. Don't put markup inside them. -->
+    <section id="screen-home" hidden></section>      <!-- home.js -->
+    <section id="screen-contacts" hidden></section>  <!-- contacts.js -->
+    <section id="screen-game" hidden></section>      <!-- game.js: chat, then score -->
+    <section id="screen-task" hidden></section>      <!-- tasks.js: reflection, then success -->
   </main>
 
   <nav class="tabbar">
@@ -28,10 +26,10 @@
     <a href="#/contacts" data-nav="contacts"><span>👥</span>Contacts</a>
   </nav>
 
-  <!-- One script per screen. If one is missing or broken, the others still load. -->
-  <script type="module" src="/app_b.js"></script>
-  <script type="module" src="/home_b.js"></script>
-  <script type="module" src="/contacts_b.js"></script>
+  <!-- app.js is the shared core; each screen module registers itself with its router. -->
+  <script type="module" src="/app.js"></script>
+  <script type="module" src="/home.js"></script>
+  <script type="module" src="/contacts.js"></script>
   <script type="module" src="/game.js"></script>
   <script type="module" src="/tasks.js"></script>
 </body>

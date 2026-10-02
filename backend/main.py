@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from .db import load_db, reset_db, save_db
 from .games import GAME_CONFIGS
-from .llm import persona_turn, score_game
+from .llm import draft_message, persona_turn, score_game
 
 
 load_dotenv()
@@ -37,7 +37,15 @@ class ContactCreate(BaseModel):
     how_met: str = Field(default="", max_length=160)
     company: str = Field(default="", max_length=160)
     role: str = Field(default="", max_length=120)
+    phone: str = Field(default="", max_length=40)
+    email: str = Field(default="", max_length=200)
+    last_contact: date | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class DraftRequest(BaseModel):
+    contact_id: str
+    reason: str = Field(default="", max_length=1000)
 
 
 def public_state() -> dict[str, Any]:
@@ -116,7 +124,11 @@ def complete_task(task_id: str, payload: TaskCompletion) -> dict[str, Any]:
 @app.post("/api/contacts")
 def create_contact(payload: ContactCreate) -> dict[str, Any]:
     state = load_db()
-    contact = {"id": f"c{len(state.get('contacts', [])) + 1}", **payload.model_dump(), "last_contact": today()}
+    if payload.last_contact and payload.last_contact > date.today():
+        raise HTTPException(status_code=422, detail="last_contact can't be in the future")
+    fields = payload.model_dump(exclude={"last_contact"})
+    met_on = payload.last_contact.isoformat() if payload.last_contact else today()
+    contact = {"id": f"c{len(state.get('contacts', [])) + 1}", **fields, "last_contact": met_on}
     state.setdefault("contacts", []).insert(0, contact)
     save_db(state)
     return contact
@@ -132,9 +144,33 @@ def reminders() -> dict[str, list[dict[str, Any]]]:
     state = load_db()
     result = []
     for contact in state.get("contacts", [])[:3]:
-        note = (contact.get("notes") or ["their recent work"])[0]
-        result.append({"contact_id": contact["id"], "headline": f"Reconnect with {contact['name']}", "reason": f"You remember {note.lower()}.", "suggested_action": "Send one specific question.", "tip": "Reference the detail they shared."})
+        name = contact["name"]
+        note = ((contact.get("notes") or [""])[0] or "").strip().rstrip(".!")
+        try:
+            days = (date.today() - date.fromisoformat(contact.get("last_contact", ""))).days
+        except ValueError:
+            days = None
+        if days is None:
+            since = "It's a good time to reach out"
+        elif days <= 0:
+            since = "You just met"
+        elif days == 1:
+            since = "You talked yesterday"
+        else:
+            since = f"It's been {days} days since you talked"
+        reason = f'{since}. {name} mentioned "{note}", which gives you a genuine reason to reach out.' if note else f"{since}, so it's a good moment to reconnect."
+        action = f"Ask {name} one specific question about that." if note else f"Ask {name} what they're working on right now."
+        result.append({"contact_id": contact["id"], "headline": f"Follow up with {name}", "reason": reason, "suggested_action": action, "tip": "Mention the detail they shared so it doesn't read like a generic check-in."})
     return {"reminders": result}
+
+
+@app.post("/api/coach/draft")
+def draft(payload: DraftRequest) -> dict[str, str]:
+    state = load_db()
+    contact = next((item for item in state.get("contacts", []) if item.get("id") == payload.contact_id), None)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"message": draft_message(contact, payload.reason, state.get("user", {}))}
 
 
 @app.get("/health")
@@ -147,6 +183,6 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 if FRONTEND_DIR.exists():
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index_C.html")
+        return FileResponse(FRONTEND_DIR / "index.html")
 
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
