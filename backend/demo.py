@@ -158,7 +158,12 @@ class DemoAI:
             hook = (contact["notes"][-1] if contact["notes"] else context["reason"])
             hook = re.sub(r"\s+", " ", hook)
             hook = " ".join(hook.split()[:25])
-            body = f'I made a note from our conversation: "{hook}". What would be a useful small next step to learn more about that?'
+            projects = context["user"].get("personal_projects") or []
+            project = re.sub(r"\s+", " ", projects[0]).split(".")[0][:120] if projects else ""
+            if project:
+                body = f'I made a note from our conversation: "{hook}". I am exploring this through a project on {project}. What would be a useful small next step to learn more about that?'
+            else:
+                body = f'I made a note from our conversation: "{hook}". What would be a useful small next step to learn more about that?'
         return AIResult(f"Hi {name}, {body} — {student}", "demo")
 
     async def suggest(self, context: dict) -> AIResult[list[str]]:

@@ -5,11 +5,17 @@
     "major": "Computer Science",
     "target_roles": ["Data Engineer"],
     "location": "Provo, UT",
+    "target_company": "",
     "xp": 340,
     "streak": 4,
     "last_active": "2026-10-01",
     "today_connection_done": false,
-    "onboarding_goal": "general"
+    "onboarding_goal": "general",
+    "resume_text": "",
+    "personal_projects": [],
+    "existing_connections": [],
+    "interests": [],
+    "onboarding_complete": false
   },
   "contacts": [
     {

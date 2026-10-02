@@ -25,13 +25,20 @@ def profile_context(database: Database, today: date) -> dict:
             "school": user.school,
             "major": user.major,
             "target_roles": user.target_roles,
+            "target_company": user.target_company,
             "location": user.location,
+            "interests": user.interests,
+            "personal_projects": user.personal_projects[:5],
         },
         "known_network_context": [
             {"company": c.company, "role": c.role}
             for c in database.contacts
             if c.company or c.role
         ][:12],
+        "student_background": {
+            "resume_summary": user.resume_text[:2000],
+            "existing_connections": user.existing_connections[:8],
+        },
         "open_connection_types": [task.type for task in database.tasks if task.status == "open"],
     }
 
@@ -44,7 +51,7 @@ def search_queries(context: dict) -> list[str]:
     school = student["school"]
     return [
         f"upcoming professional networking events for {roles} near {location} within 90 days",
-        f"{school} computer science data engineering events seminars career networking within 90 days",
+        f"{school} {student['major']} {roles} events seminars career networking within 90 days",
         f"public LinkedIn profiles and community organizers for {roles} in {location}",
     ]
 

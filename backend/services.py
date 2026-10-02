@@ -447,7 +447,25 @@ class BuddyService:
 
     def complete_onboarding(self, request: OnboardingRequest) -> StateResponse:
         def commit(database: Database):
+            if request.name:
+                database.user.name = request.name
+            if request.university:
+                database.user.school = request.university
+            if request.major:
+                database.user.major = request.major
+            if request.location:
+                database.user.location = request.location
+            database.user.target_company = request.target_company
+            if request.target_roles:
+                database.user.target_roles = request.target_roles
+            elif request.target_role:
+                database.user.target_roles = [request.target_role]
+            database.user.resume_text = request.resume_text
+            database.user.personal_projects = request.personal_projects
+            database.user.existing_connections = request.existing_connections
+            database.user.interests = request.interests
             database.user.onboarding_goal = request.goal
+            database.user.onboarding_complete = True
             role = request.target_role or (database.user.target_roles[0] if database.user.target_roles else "your target role")
             company = request.target_company or "a company you admire"
             if request.goal == "job":
